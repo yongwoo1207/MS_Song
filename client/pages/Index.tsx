@@ -1,101 +1,90 @@
-import { useMemo, useState } from "react";
-import { useEnlistmentDate } from "@/hooks/useEnlistmentDate";
-import SearchBar from "@/components/SearchBar";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import MobileShell from "@/components/ipdae/MobileShell";
+import BrandMark from "@/components/ipdae/BrandMark";
+import BranchSegment from "@/components/ipdae/BranchSegment";
+import { type Branch, SERVICE_MONTHS, parseDay, toDayParam } from "@/lib/service";
+import { cn } from "@/lib/utils";
+
+const MIN_DAY = "2010-02-01"; // chart data starts Feb 2010
 
 export default function Index() {
-  const { date, onChange, fetchChart, loading, error, result } = useEnlistmentDate();
-  const [query, setQuery] = useState("");
+  const navigate = useNavigate();
+  const [enlist, setEnlist] = useState("");
+  const [branch, setBranch] = useState<Branch>("육군");
+  const today = toDayParam(new Date());
+  const valid = !!parseDay(enlist) && enlist >= MIN_DAY && enlist <= today;
 
-  const filtered = useMemo(() => {
-    if (!result) return [];
-    const q = query.trim().toLowerCase();
-    if (!q) return result.songs;
-    return result.songs.filter((s) =>
-      s.title.toLowerCase().includes(q) || s.artist.toLowerCase().includes(q)
-    );
-  }, [result, query]);
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!valid) return;
+    navigate(`/result?${new URLSearchParams({ d: enlist, b: branch })}`);
+  };
 
   return (
-    <div className="grid gap-10">
-      <section className="grid gap-6">
-        <div className="mx-auto max-w-3xl text-center">
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-[hsl(122_50%_38%)] to-[hsl(95_50%_42%)]">
-            나의 입대곡, 그때의 인기차트
-            <br />
-          </h1>
-          <p className="mt-3 text-muted-foreground">
-            입대 월을 입력하면 그 달의 인기 차트와 뮤직비디오를 한 번에 보여드려요.
-          </p>
+    <MobileShell className="gap-8 px-6 pb-8 pt-14">
+      <header className="flex flex-col gap-3">
+        <BrandMark />
+        <h1 className="text-[34px] font-bold leading-tight tracking-[-0.02em]">
+          그때 그 노래,
+          <br />
+          계급별로 다시 듣기
+        </h1>
+        <p className="text-[15px] leading-relaxed text-muted-foreground">
+          입대일만 넣으면 이등병부터 병장까지 그 시절 차트를 꺼내드려요.
+        </p>
+      </header>
+
+      <form id="enlist-form" onSubmit={submit} className="flex flex-col gap-6 rounded-[20px] border bg-card px-5 py-6">
+        <div className="flex flex-col gap-2">
+          <label htmlFor="enlist" className="text-sm font-bold">
+            입대일
+          </label>
+          <input
+            id="enlist"
+            type="date"
+            required
+            min={MIN_DAY}
+            max={today}
+            value={enlist}
+            onChange={(e) => setEnlist(e.target.value)}
+            className="h-[52px] rounded-xl border border-input bg-field px-3.5 font-mono text-[17px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          />
         </div>
-        <div className="mx-auto w-full max-w-3xl rounded-2xl border bg-card/70 backdrop-blur p-4 md:p-6 shadow-sm">
-          <div className="flex flex-col md:flex-row items-stretch md:items-end gap-3 md:gap-4">
-            <div className="flex-1">
-              <label htmlFor="enlist-date" className="block text-sm font-medium mb-1">입대 월</label>
-              <input
-                id="enlist-date"
-                type="month"
-                value={date}
-                onChange={(e) => onChange(e.target.value)}
-                className="w-full rounded-xl border bg-background/70 px-4 py-3 outline-none focus:ring-2 focus:ring-primary/40"
-                aria-label="입대 월 선택"
-              />
-            </div>
-            <button
-              onClick={fetchChart}
-              disabled={loading}
-              className="shrink-0 md:w-40 inline-flex h-12 items-center justify-center rounded-xl bg-primary px-5 text-primary-foreground font-semibold shadow hover:shadow-md disabled:opacity-60"
-            >
-              {loading ? "불러오는 중..." : "차트 보기"}
-            </button>
-          </div>
-          {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
-          {result && !result.exactMatch && (
-            <p className="mt-3 text-sm text-muted-foreground">
-              정확한 데이터가 없어 가장 가까운 달({result.month})의 차트를 보여드려요.
-            </p>
-          )}
+
+        <div className="flex flex-col gap-2">
+          <span id="branch-label" className="text-sm font-bold">
+            군 종류
+          </span>
+          <BranchSegment value={branch} onChange={setBranch} labelId="branch-label" />
+          <span className="text-[13px] text-muted-foreground">
+            {branch} 현재 복무기간 {SERVICE_MONTHS[branch]}개월 기준
+          </span>
         </div>
-      </section>
 
-      {(loading || result) && (
-        <section className="grid gap-6">
-          <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-6">
-            <h2 className="text-2xl font-bold tracking-tight">
-              {result ? `${result.month} 인기차트` : "인기차트 불러오는 중"}
-            </h2>
-            <SearchBar value={query} onChange={setQuery} className="md:ml-auto md:w-80" />
-          </div>
+        <p className="rounded-[10px] bg-background px-3 py-2.5 text-[13px] leading-relaxed text-muted-foreground">
+          전역일·진급일은 통상 기준으로 자동 계산돼요. 실제와 다르면 다음 화면에서 고칠 수 있어요.
+        </p>
+      </form>
 
-          {loading && (
-            <div className="rounded-2xl border bg-card/70 p-6">
-              <div className="animate-pulse space-y-3">
-                <div className="h-4 w-28 rounded bg-muted" />
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <div key={i} className="h-4 w-full rounded bg-muted" />
-                ))}
-              </div>
-              <div className="sr-only" aria-live="polite">로딩 중…</div>
-            </div>
+      <div className="flex-1" />
+
+      <div className="flex flex-col gap-3">
+        <button
+          type="submit"
+          form="enlist-form"
+          disabled={!valid}
+          className={cn(
+            "flex h-14 items-center justify-center rounded-[14px] bg-primary text-[17px] font-bold text-primary-foreground transition-opacity",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50",
           )}
-
-          {!loading && result && (
-            <ul className="rounded-2xl border bg-card/70 divide-y">
-              {filtered.map((s) => (
-                <li
-                  key={s.rank + s.title}
-                  className="grid grid-cols-[56px_1fr] gap-4 items-center p-4"
-                >
-                  <div className="text-sm text-muted-foreground">#{String(s.rank).padStart(2, "0")}</div>
-                  <div className="flex flex-col">
-                    <span className="font-medium">{s.title}</span>
-                    <span className="text-sm text-muted-foreground">{s.artist}</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-    </div>
+        >
+          내 입대곡 보기
+        </button>
+        <span className="text-center text-xs text-muted-foreground">
+          써클차트 디지털차트 기준 · 2010년 2월 이후 입대자
+        </span>
+      </div>
+    </MobileShell>
   );
 }

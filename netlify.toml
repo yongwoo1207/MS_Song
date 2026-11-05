@@ -13,3 +13,9 @@
   from = "/api/*"
   status = 200
   to = "/.netlify/functions/api/:splat"
+
+# SPA fallback so /result?... survives a refresh (chart data is static in /data)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

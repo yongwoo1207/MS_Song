@@ -1,0 +1,5 @@
+{
+  "buildCommand": "npm run build:client",
+  "outputDirectory": "dist/spa",
+  "rewrites": [{ "source": "/((?!data/|assets/).*)", "destination": "/index.html" }]
+}

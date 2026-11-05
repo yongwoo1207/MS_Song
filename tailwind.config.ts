@@ -13,7 +13,30 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        sans: [
+          '"Noto Sans KR"',
+          "system-ui",
+          '"Apple SD Gothic Neo"',
+          '"Malgun Gothic"',
+          "sans-serif",
+        ],
+        mono: ['"IBM Plex Mono"', "ui-monospace", "monospace"],
+      },
       colors: {
+        field: "hsl(var(--field))",
+        /* Rank timeline shades, light → dark (이병 → 병장) */
+        rank: {
+          1: "#C9D0B4",
+          2: "#9AA77A",
+          3: "#6E7F48",
+          4: "#4A5A2A",
+        },
+        ink: {
+          DEFAULT: "#1B1E17",
+          soft: "#C9CCC2",
+          icon: "#8A8F80",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
