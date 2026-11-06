@@ -322,7 +322,7 @@ def main() -> int:
         YOUTUBE.write_text(json.dumps(dict(sorted(videos.items())), ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
         REVIEW.parent.mkdir(parents=True, exist_ok=True)
         with REVIEW.open("w", newline="", encoding="utf-8-sig") as f:
-            w = csv.writer(f)
+            w = csv.writer(f, lineterminator="\n")  # LF everywhere, so CI runs do not rewrite every line
             w.writerow(["artist", "title", "status", "score", "video_id", "video_title", "channel"])
             w.writerows(rows)
 

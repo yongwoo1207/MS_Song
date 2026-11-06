@@ -127,7 +127,7 @@ def save(months: dict[str, list[dict]], top: int) -> None:
 
     CSV_PATH.parent.mkdir(parents=True, exist_ok=True)
     with CSV_PATH.open("w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.writer(f)
+        writer = csv.writer(f, lineterminator="\n")  # LF everywhere, so CI runs do not rewrite every line
         writer.writerow(["year_month", "rank", "title", "artist", "album"])
         for key, songs in ordered.items():
             y, m = parse_month(key)
