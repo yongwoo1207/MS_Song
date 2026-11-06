@@ -1,23 +1,34 @@
-import { useState } from "react";
-import { Link, Navigate } from "react-router-dom";
-import { ChevronLeft, Pencil } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Navigate, useLocation } from "react-router-dom";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import MobileShell from "@/components/ipdae/MobileShell";
+import AppHeader from "@/components/ipdae/AppHeader";
+import BottomNav from "@/components/ipdae/BottomNav";
 import ServiceSummary from "@/components/ipdae/ServiceSummary";
 import RankTabs from "@/components/ipdae/RankTabs";
 import RankChartPanel from "@/components/ipdae/RankChartPanel";
+import LockedRank from "@/components/ipdae/LockedRank";
 import MiniPlayer from "@/components/ipdae/MiniPlayer";
 import PlayerSheet from "@/components/ipdae/PlayerSheet";
 import EditDatesDrawer from "@/components/ipdae/EditDatesDrawer";
 import { useServicePlan } from "@/hooks/useServicePlan";
+import { useSaveEnlistment } from "@/hooks/useSavedEnlistment";
 import { usePlayer } from "@/hooks/usePlayer";
-import { fullDot } from "@/lib/format";
-import { type Rank, rankOn } from "@/lib/service";
+import { isLockedRank } from "@/lib/dday";
+import { RANKS, type Rank, rankOn } from "@/lib/service";
 
+/** 입대곡 tab: per-rank charts; ranks not reached yet stay locked. */
 export default function Result() {
   const { plan, setOverrides } = useServicePlan();
+  const { search } = useLocation();
   const player = usePlayer();
-  const [tab, setTab] = useState<Rank>(() => (plan && rankOn(plan, new Date())) || "이병");
+  useSaveEnlistment(search, !!plan);
+  const current = useMemo(() => (plan ? rankOn(plan, new Date()) : null), [plan]);
+  const locked = useMemo(
+    () => (plan ? RANKS.filter((r) => isLockedRank(plan, r)) : []),
+    [plan],
+  );
+  const [tab, setTab] = useState<Rank>(() => current ?? "이병");
   const [editing, setEditing] = useState(false);
 
   if (!plan) return <Navigate to="/" replace />;
@@ -25,38 +36,24 @@ export default function Result() {
 
   return (
     <MobileShell>
-      <header className="flex items-center justify-between px-3 pb-2 pt-4">
-        <Link
-          to="/"
-          aria-label="입력 화면으로"
-          className="flex size-11 items-center justify-center text-foreground"
-        >
-          <ChevronLeft className="size-[22px]" strokeWidth={2} />
-        </Link>
-        <h1 className="text-base font-bold">
-          {fullDot(plan.enlist)} {plan.branch} 입대
-        </h1>
-        <button
-          type="button"
-          aria-label="날짜 수정"
-          onClick={() => setEditing(true)}
-          className="flex size-11 items-center justify-center text-foreground"
-        >
-          <Pencil className="size-5" strokeWidth={2} />
-        </button>
-      </header>
+      <AppHeader plan={plan} title="내 입대곡" />
 
-      <ServiceSummary plan={plan} />
+      <ServiceSummary plan={plan} onEditDates={() => setEditing(true)} />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as Rank)}>
-        <RankTabs />
+        <RankTabs locked={locked} />
         {plan.periods.map((period) => (
           <TabsContent key={period.rank} value={period.rank} className="mt-0">
-            <RankChartPanel period={period} player={player} />
+            {locked.includes(period.rank) ? (
+              <LockedRank period={period} />
+            ) : (
+              <RankChartPanel period={period} player={player} current={period.rank === current} />
+            )}
           </TabsContent>
         ))}
       </Tabs>
 
+      <BottomNav />
       {!player.expanded && <MiniPlayer player={player} />}
       <PlayerSheet player={player} period={queuedPeriod} />
       <EditDatesDrawer

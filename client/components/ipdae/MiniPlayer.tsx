@@ -7,7 +7,8 @@ export default function MiniPlayer({ player }: { player: Player }) {
   const song = player.current;
   if (!song) return null;
   return (
-    <div className="fixed inset-x-0 bottom-3 z-30 mx-auto w-full max-w-[430px] px-2">
+    // sits just above the bottom tab bar (76px + safe area)
+    <div className="fixed inset-x-0 bottom-[calc(84px+env(safe-area-inset-bottom))] z-30 mx-auto w-full max-w-[430px] px-2">
       <div className="flex h-16 items-center gap-3 rounded-2xl bg-foreground pl-4 pr-2 text-white shadow-lg">
         <button
           type="button"

@@ -105,4 +105,23 @@
       "Apple SD Gothic Neo", "Malgun Gothic", "Nanum Gothic", sans-serif;
     @apply bg-background text-foreground;
   }
+
+  /*
+   * Date fields on phones: iOS Safari sizes native date inputs to their content
+   * and ignores width, and Korean locales print "2021. 10. 28." (longer once the
+   * day has two digits), so the end of the date got cut off. Drop the native
+   * sizing so the field fills its row and keep the value left-aligned.
+   */
+  input[type="date"] {
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
+    width: 100%;
+    min-width: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  input[type="date"]::-webkit-date-and-time-value {
+    text-align: left;
+    margin: 0;
+  }
 }

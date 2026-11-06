@@ -8,16 +8,13 @@ import {
   subDays,
 } from "date-fns";
 
+import { CURRENT_MONTHS, dischargeDate, serviceLength } from "./serviceLength";
+
 export const BRANCHES = ["육군", "해군", "공군", "해병대"] as const;
 export type Branch = (typeof BRANCHES)[number];
 
-/** Current mandatory service length in months. */
-export const SERVICE_MONTHS: Record<Branch, number> = {
-  육군: 18,
-  해군: 20,
-  공군: 21,
-  해병대: 18,
-};
+/** Service length for someone enlisting today, in months. */
+export const SERVICE_MONTHS: Record<Branch, number> = CURRENT_MONTHS;
 
 export const RANKS = ["이병", "일병", "상병", "병장"] as const;
 export type Rank = (typeof RANKS)[number];
@@ -35,6 +32,11 @@ export interface ServicePlan {
   discharge: Date;
   branch: Branch;
   periods: RankPeriod[];
+  /** 입대일~전역일, 양 끝 포함 */
+  serviceDays: number;
+  /** 법정 기준 복무개월과 단계적 단축일수 (전역일을 직접 고친 경우에도 법정 값) */
+  baseMonths: number;
+  reductionDays: number;
 }
 
 /** Optional user corrections: 일병/상병/병장 promotion days and discharge day. */
@@ -57,19 +59,35 @@ export function parseDay(value: string | null | undefined): Date | null {
 export const toDayParam = (d: Date) => format(d, "yyyy-MM-dd");
 
 /**
- * Standard schedule: 이병 until the 1st of (enlist month + 2), then 6 months as
- * 일병, 6 months as 상병, and 병장 until discharge (enlist + service − 1 day).
+ * 진급 최저복무기간: 2019-09-01 시행으로 이병·일병·상병 각 1개월씩 단축
+ * (3-7-7개월 → 2-6-6개월). 진급은 해당 달 1일자. 시행일에 새 기준을 이미
+ * 채운 병사는 시행일에 진급했다.
+ */
+const PROMOTION_RULE_CHANGE = parseISO("2019-09-01");
+const PROMOTION_MONTHS = { old: [3, 7, 7], current: [2, 6, 6] } as const;
+
+function nextPromotion(prev: Date, step: 0 | 1 | 2): Date {
+  const old = startOfMonth(addMonths(prev, PROMOTION_MONTHS.old[step]));
+  if (old < PROMOTION_RULE_CHANGE) return old;
+  const current = startOfMonth(addMonths(prev, PROMOTION_MONTHS.current[step]));
+  return current > PROMOTION_RULE_CHANGE ? current : PROMOTION_RULE_CHANGE;
+}
+
+/**
+ * Legal schedule: discharge from 병역법 시행령 별표 5 (incl. the gradual
+ * 2-week/3-week reductions), promotions by the minimum-service rule of the
+ * time. Any date can be overridden by the user.
  */
 export function computeService(
   enlist: Date,
   branch: Branch,
   overrides: ServiceOverrides = {},
 ): ServicePlan {
-  const pfc = overrides.pfc ?? startOfMonth(addMonths(enlist, 2));
-  const cpl = overrides.cpl ?? addMonths(pfc, 6);
-  const sgt = overrides.sgt ?? addMonths(cpl, 6);
-  const discharge =
-    overrides.discharge ?? subDays(addMonths(enlist, SERVICE_MONTHS[branch]), 1);
+  const pfc = overrides.pfc ?? nextPromotion(enlist, 0);
+  const cpl = overrides.cpl ?? nextPromotion(pfc, 1);
+  const sgt = overrides.sgt ?? nextPromotion(cpl, 2);
+  const discharge = overrides.discharge ?? dischargeDate(branch, enlist);
+  const { months: baseMonths, reductionDays } = serviceLength(branch, enlist);
 
   const starts = [enlist, pfc, cpl, sgt];
   const periods = RANKS.map((rank, i) => {
@@ -79,7 +97,15 @@ export function computeService(
     return { rank, start, end, days, months: Math.max(1, Math.round(days / 30.44)) };
   });
 
-  return { enlist, discharge, branch, periods };
+  return {
+    enlist,
+    discharge,
+    branch,
+    periods,
+    serviceDays: differenceInCalendarDays(discharge, enlist) + 1,
+    baseMonths,
+    reductionDays,
+  };
 }
 
 /** True when promotion days are strictly increasing up to discharge. */

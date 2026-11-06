@@ -70,9 +70,10 @@ export default function EditDatesDrawer({ plan, open, onOpenChange, onSave }: Ed
             <DrawerTitle>진급일·전역일 고치기</DrawerTitle>
             <DrawerDescription>실제 날짜로 바꾸면 계급별 차트도 다시 계산돼요.</DrawerDescription>
           </DrawerHeader>
-          <div className="grid grid-cols-2 gap-3 px-4">
+          {/* one field per row: two date fields side by side don't fit a phone */}
+          <div className="flex flex-col gap-2.5 px-4">
             {FIELDS.map((f) => (
-              <div key={f.key} className="flex flex-col gap-1.5">
+              <div key={f.key} className="grid grid-cols-[84px_minmax(0,1fr)] items-center gap-3">
                 <label htmlFor={`edit-${f.key}`} className="text-[13px] font-bold">
                   {f.label}
                 </label>

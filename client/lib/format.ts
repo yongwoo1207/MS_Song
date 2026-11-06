@@ -1,7 +1,10 @@
 import { format } from "date-fns";
+import { ko } from "date-fns/locale";
 
 /** 2023.03.06 */
 export const fullDot = (d: Date) => format(d, "yyyy.MM.dd");
+/** 2027.09.08 (수) */
+export const dayWithWeekday = (d: Date) => format(d, "yyyy.MM.dd (EEE)", { locale: ko });
 /** 23.03.06 */
 export const shortDot = (d: Date) => format(d, "yy.MM.dd");
 /** 03.06 within the reference year, 24.05.01 otherwise */

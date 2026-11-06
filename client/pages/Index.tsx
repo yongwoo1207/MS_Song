@@ -1,25 +1,47 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import MobileShell from "@/components/ipdae/MobileShell";
 import BrandMark from "@/components/ipdae/BrandMark";
 import BranchSegment from "@/components/ipdae/BranchSegment";
-import { type Branch, SERVICE_MONTHS, parseDay, toDayParam } from "@/lib/service";
+import { loadSavedEnlistment } from "@/hooks/useSavedEnlistment";
+import { fullDot } from "@/lib/format";
+import {
+  type Branch,
+  SERVICE_MONTHS,
+  computeService,
+  isBranch,
+  parseDay,
+  toDayParam,
+} from "@/lib/service";
 import { cn } from "@/lib/utils";
 
 const MIN_DAY = "2010-02-01"; // chart data starts Feb 2010
 
 export default function Index() {
   const navigate = useNavigate();
-  const [enlist, setEnlist] = useState("");
-  const [branch, setBranch] = useState<Branch>("육군");
+  const [params] = useSearchParams();
+  const editing = params.get("edit") === "1";
+  // returning visitor → their D-day; "입대 정보 수정" (?edit=1) → prefilled form
+  const saved = editing ? null : loadSavedEnlistment();
+  const [enlist, setEnlist] = useState(() => (parseDay(params.get("d")) ? params.get("d")! : ""));
+  const [branch, setBranch] = useState<Branch>(() => {
+    const b = params.get("b");
+    return isBranch(b) ? b : "육군";
+  });
   const today = toDayParam(new Date());
   const valid = !!parseDay(enlist) && enlist >= MIN_DAY && enlist <= today;
+  const plan = useMemo(
+    () => (valid ? computeService(parseDay(enlist)!, branch) : null),
+    [valid, enlist, branch],
+  );
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!valid) return;
-    navigate(`/result?${new URLSearchParams({ d: enlist, b: branch })}`);
+    navigate(`/dday?${new URLSearchParams({ d: enlist, b: branch })}`);
   };
+
+  if (saved) return <Navigate to={`/dday?${saved}`} replace />;
 
   return (
     <MobileShell className="gap-8 px-6 pb-8 pt-14">
@@ -57,13 +79,15 @@ export default function Index() {
             군 종류
           </span>
           <BranchSegment value={branch} onChange={setBranch} labelId="branch-label" />
-          <span className="text-[13px] text-muted-foreground">
-            {branch} 현재 복무기간 {SERVICE_MONTHS[branch]}개월 기준
+          <span className="text-[13px] text-muted-foreground" aria-live="polite">
+            {plan
+              ? `${branch} ${plan.baseMonths}개월${plan.reductionDays ? ` − ${plan.reductionDays}일 단축` : ""} · ${fullDot(plan.discharge)} 전역`
+              : `${branch} 현재 복무기간 ${SERVICE_MONTHS[branch]}개월 기준`}
           </span>
         </div>
 
         <p className="rounded-[10px] bg-background px-3 py-2.5 text-[13px] leading-relaxed text-muted-foreground">
-          전역일·진급일은 통상 기준으로 자동 계산돼요. 실제와 다르면 다음 화면에서 고칠 수 있어요.
+          전역일은 병역법 기준(단계적 단축 포함), 진급일은 당시 진급 기준으로 계산해요. 실제와 다르면 다음 화면에서 고칠 수 있어요.
         </p>
       </form>
 
@@ -79,7 +103,7 @@ export default function Index() {
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50",
           )}
         >
-          내 입대곡 보기
+          {editing ? "저장하고 보기" : "내 D-day·입대곡 보기"}
         </button>
         <span className="text-center text-xs text-muted-foreground">
           써클차트 디지털차트 기준 · 2010년 2월 이후 입대자
