@@ -13,7 +13,7 @@ export default function BottomNav() {
   return (
     <nav
       aria-label="주요 화면"
-      className="sticky bottom-0 z-20 mt-auto grid grid-cols-2 border-t bg-card px-6 pb-[max(env(safe-area-inset-bottom),14px)] pt-1.5"
+      className="sticky bottom-0 z-20 mt-auto grid grid-cols-2 border-t bg-card px-10 pb-[max(env(safe-area-inset-bottom),6px)] pt-1"
     >
       {TABS.map(({ to, label, Icon }) => (
         <NavLink
@@ -22,12 +22,12 @@ export default function BottomNav() {
           replace
           className={({ isActive }) =>
             cn(
-              "flex h-14 flex-col items-center justify-center gap-1 text-xs font-bold",
+              "flex h-11 flex-col items-center justify-center gap-0.5 text-[11px] font-bold",
               isActive ? "text-primary" : "text-ink-icon hover:text-foreground",
             )
           }
         >
-          <Icon className="size-6" strokeWidth={2} aria-hidden="true" />
+          <Icon className="size-[18px]" strokeWidth={2} aria-hidden="true" />
           {label}
         </NavLink>
       ))}

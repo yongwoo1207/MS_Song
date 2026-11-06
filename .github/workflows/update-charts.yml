@@ -1,0 +1,55 @@
+# 매주 써클차트 새 월간 차트를 받아 오고, 새 곡의 유튜브 영상을 찾아
+# public/data/*.json 을 갱신한 뒤 main 에 push 한다. push 되면 Cloudflare Pages
+# 가 자동으로 다시 배포한다.
+#
+# 필요한 설정: 저장소 Settings → Secrets and variables → Actions 에
+#   YOUTUBE_API_KEY (YouTube Data API v3 키)
+# 수동 실행: Actions 탭 → Update charts → Run workflow
+name: Update charts
+
+on:
+  schedule:
+    - cron: "0 1 * * 2" # 매주 화요일 10:00 (한국 시간)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-charts
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Crawl new monthly charts
+        run: python scripts/crawl_circle_chart.py
+
+      - name: Match YouTube videos for new songs
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        # 한 곡에 약 101 단위 → 60곡이면 하루 무료 한도(10,000)의 약 60%
+        run: python scripts/match_youtube.py --limit 60 --delay 0.3
+
+      - name: Commit and push
+        run: |
+          git add public/data data
+          if git diff --cached --quiet; then
+            echo "바뀐 데이터 없음"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update chart data ($(date -u +%Y-%m-%d))"
+          git push

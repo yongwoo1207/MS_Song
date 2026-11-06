@@ -1,3 +1,4 @@
+import { ExternalLink } from "lucide-react";
 import { useRankChart } from "@/hooks/useRankChart";
 import type { Player } from "@/hooks/usePlayer";
 import { shortDot, youtubeQueue } from "@/lib/format";
@@ -50,20 +51,6 @@ export default function RankChartPanel({ period, player, current }: RankChartPan
         >
           <PlayIcon className="size-4" />이 계급 전체 재생
         </button>
-        {playable.length > 0 ? (
-          <a
-            href={youtubeQueue(playable.map((s) => s.youtubeId!))}
-            target="_blank"
-            rel="noreferrer"
-            className="flex h-11 flex-1 items-center justify-center rounded-xl border border-input bg-card text-sm font-bold text-foreground"
-          >
-            유튜브 앱에서 열기
-          </a>
-        ) : (
-          <span className="flex h-11 flex-1 items-center justify-center rounded-xl border border-input bg-card text-sm font-bold text-foreground opacity-50">
-            유튜브 앱에서 열기
-          </span>
-        )}
       </div>
 
       {isLoading && (
@@ -86,7 +73,7 @@ export default function RankChartPanel({ period, player, current }: RankChartPan
       )}
 
       {songs.length > 0 && (
-        <ol className="flex flex-col px-2 pb-[88px]">
+        <ol className="flex flex-col px-2">
           {songs.map((song) => {
             const idx = playable.indexOf(song);
             return (
@@ -99,6 +86,24 @@ export default function RankChartPanel({ period, player, current }: RankChartPan
             );
           })}
         </ol>
+      )}
+
+      {playable.length > 0 && (
+        <div className="px-4 pb-6 pt-3">
+          <a
+            href={youtubeQueue(playable.map((s) => s.youtubeId!))}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => player.setPlaying(false)}
+            className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-input bg-card text-sm font-bold text-foreground"
+          >
+            <ExternalLink className="size-4" strokeWidth={2} />
+            {period.rank} 차트 유튜브에서 이어듣기
+          </a>
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            화면을 끄고 들으려면 유튜브 앱에서 들어주세요.
+          </p>
+        </div>
       )}
     </div>
   );

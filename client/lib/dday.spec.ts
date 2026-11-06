@@ -17,17 +17,19 @@ describe("ddayStatus (serving)", () => {
     expect(s.daysLeft).toBe(306);
     expect(s.dayOfService).toBe(243);
     expect(s.progress).toBe(44.2);
-    expect(s.current.rank).toBe("상병");
-    expect(s.dayOfRank).toBe(6);
-    expect(s.nextPromotion && fmt(s.nextPromotion.date)).toBe("2027-05-01");
-    expect(s.nextPromotion?.daysLeft).toBe(176);
+    // promotions fall on the enlistment day-of-month: 일병 05-09, 상병 11-09
+    expect(s.current.rank).toBe("일병");
+    expect(s.dayOfRank).toBe(182);
+    expect(s.nextPromotion && fmt(s.nextPromotion.date)).toBe("2026-11-09");
+    expect(s.nextPromotion?.daysLeft).toBe(3);
   });
 
   it("lists upcoming days in order", () => {
     if (s.status !== "serving") throw new Error(s.status);
     expect(s.upcoming.map((m) => [m.label, fmt(m.date), m.daysLeft])).toEqual([
+      ["상병 진급", "2026-11-09", 3],
       ["군생활 절반", "2026-12-08", 32],
-      ["병장 진급", "2027-05-01", 176],
+      ["병장 진급", "2027-05-09", 184],
       ["전역", "2027-09-08", 306],
     ]);
     expect(fmt(halfwayDate(plan))).toBe("2026-12-08");
@@ -48,7 +50,8 @@ describe("ddayStatus (serving)", () => {
   });
 
   it("locks ranks not reached yet", () => {
-    expect(isLockedRank(plan, "상병", day("2026-11-06"))).toBe(false);
+    expect(isLockedRank(plan, "일병", day("2026-11-06"))).toBe(false);
+    expect(isLockedRank(plan, "상병", day("2026-11-06"))).toBe(true);
     expect(isLockedRank(plan, "병장", day("2026-11-06"))).toBe(true);
   });
 });

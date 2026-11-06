@@ -17,6 +17,15 @@ export function loadSavedEnlistment(): string | null {
   }
 }
 
+/** Forget the saved enlistment so the next visit starts from a blank form. */
+export function clearSavedEnlistment() {
+  try {
+    window.localStorage.removeItem(KEY);
+  } catch {
+    /* storage unavailable: nothing saved */
+  }
+}
+
 export function useSaveEnlistment(search: string, valid: boolean) {
   useEffect(() => {
     if (!valid) return;

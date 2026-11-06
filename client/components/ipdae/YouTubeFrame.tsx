@@ -14,8 +14,7 @@ const YT_ORIGINS = ["https://www.youtube-nocookie.com", "https://www.youtube.com
 
 /**
  * Embedded player driven through the IFrame API's postMessage protocol, so no
- * extra script has to be loaded. Stays mounted while the sheet is collapsed so
- * audio keeps going.
+ * extra script has to be loaded.
  */
 export default function YouTubeFrame({
   videoId,
@@ -87,7 +86,7 @@ export default function YouTubeFrame({
       onLoad={onLoad}
       allow="autoplay; encrypted-media; picture-in-picture"
       allowFullScreen
-      className="aspect-video w-full shrink-0 rounded-[14px] bg-foreground"
+      className="aspect-video min-h-[200px] w-full shrink-0 bg-foreground"
     />
   );
 }

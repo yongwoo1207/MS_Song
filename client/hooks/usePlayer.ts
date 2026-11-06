@@ -12,7 +12,6 @@ export function usePlayer() {
   const [queue, setQueue] = useState<PlayerQueue | null>(null);
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [expanded, setExpanded] = useState(false);
 
   const current = queue?.songs[index] ?? null;
   const hasPrev = index > 0;
@@ -22,6 +21,12 @@ export function usePlayer() {
     setQueue(q);
     setIndex(i);
     setPlaying(true);
+  }, []);
+
+  const stop = useCallback(() => {
+    setQueue(null);
+    setIndex(0);
+    setPlaying(false);
   }, []);
 
   const jump = useCallback(
@@ -39,11 +44,10 @@ export function usePlayer() {
     current,
     playing,
     setPlaying,
-    expanded,
-    setExpanded,
     hasPrev,
     hasNext,
     play,
+    stop,
     jump,
     prev: () => jump(index - 1),
     next: () => jump(index + 1),

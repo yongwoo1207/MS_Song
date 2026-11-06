@@ -14,6 +14,12 @@
 youtube.json 에 이미 있는 곡(손으로 고친 것 포함)은 건드리지 않는다.
 잘못 연결된 곡은 youtube.json 에서 값을 직접 고치면 된다.
 
+검색 방식
+- 환경변수 YOUTUBE_API_KEY 가 있으면 YouTube Data API v3 로 검색한다
+  (GitHub Actions 처럼 유튜브가 봇 확인 화면을 띄우는 서버 환경용).
+  한 곡에 약 101 단위(검색 100 + 영상 정보 1), 무료 한도는 하루 10,000 단위.
+- 없으면 유튜브 검색 페이지를 직접 읽는다 (집 PC 에서 돌릴 때).
+
 사용법 (MS_Song 폴더에서)
     python scripts/match_youtube.py              # 비어 있는 곡 전부
     python scripts/match_youtube.py --limit 20   # 20곡만 시험
@@ -23,7 +29,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import html
 import json
+import os
 import random
 import re
 import sys
@@ -109,7 +117,68 @@ def parse_length(text: str | None) -> int | None:
     return secs
 
 
+API_KEY = os.environ.get("YOUTUBE_API_KEY", "").strip()
+API_BASE = "https://www.googleapis.com/youtube/v3"
+
+
+class QuotaExceeded(RuntimeError):
+    """API 하루 한도를 다 썼다. 남은 곡은 다음 실행 때 처리한다."""
+
+
+def iso_seconds(text: str) -> int | None:
+    """'PT3M45S' → 225"""
+    m = re.fullmatch(r"P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", text or "")
+    if not m:
+        return None
+    d, h, mi, s = (int(x or 0) for x in m.groups())
+    return ((d * 24 + h) * 60 + mi) * 60 + s
+
+
+def api_get(session: requests.Session, path: str, params: dict) -> dict:
+    res = session.get(f"{API_BASE}/{path}", params={**params, "key": API_KEY}, timeout=20)
+    if res.status_code == 403 and "quota" in res.text.lower():
+        raise QuotaExceeded("YouTube Data API 하루 한도 초과")
+    if res.status_code != 200:
+        try:
+            reason = res.json()["error"]["message"]
+        except Exception:  # noqa: BLE001
+            reason = res.text[:200]
+        raise RuntimeError(f"YouTube API {res.status_code}: {reason}")
+    return res.json()
+
+
+def search_api(session: requests.Session, query: str, limit: int = 8) -> list[dict]:
+    found = api_get(
+        session,
+        "search",
+        {"part": "snippet", "type": "video", "q": query, "maxResults": limit,
+         "regionCode": "KR", "relevanceLanguage": "ko"},
+    )
+    ids = [it["id"]["videoId"] for it in found.get("items", []) if it.get("id", {}).get("videoId")]
+    if not ids:
+        return []
+    info = api_get(session, "videos", {"part": "snippet,contentDetails,status", "id": ",".join(ids)})
+    by_id = {v["id"]: v for v in info.get("items", [])}
+    results = []
+    for vid in ids:  # 검색 순서 유지
+        v = by_id.get(vid)
+        if not v:
+            continue
+        results.append(
+            {
+                "id": vid,
+                "title": html.unescape(v["snippet"]["title"]),
+                "channel": html.unescape(v["snippet"].get("channelTitle", "")),
+                "seconds": iso_seconds(v.get("contentDetails", {}).get("duration", "")),
+                "embeddable": v.get("status", {}).get("embeddable", True),
+            }
+        )
+    return results
+
+
 def search(session: requests.Session, query: str, limit: int = 8) -> list[dict]:
+    if API_KEY:
+        return search_api(session, query, limit)
     url = f"https://www.youtube.com/results?search_query={quote(query)}&hl=ko&gl=KR"
     html = session.get(url, timeout=20).text
     m = re.search(r"var ytInitialData = (\{.*?\});</script>", html, re.S)
@@ -174,6 +243,8 @@ def score(cand: dict, title: str, artist: str, year: int) -> int:
 
 def embeddable(session: requests.Session, video_id: str) -> bool:
     """oEmbed: 200 = 임베드 가능, 401 = 임베드 막힘, 404 = 삭제/비공개."""
+    if API_KEY:
+        return True  # API 모드에서는 videos.list 의 status.embeddable 로 이미 걸렀다
     url = f"https://www.youtube.com/oembed?format=json&url=https://www.youtube.com/watch?v={video_id}"
     return session.get(url, timeout=15).status_code == 200
 
@@ -186,7 +257,8 @@ def match_song(session: requests.Session, artist: str, title: str, year: int) ->
         # 검색어를 바꾸면 보통 결과가 나오므로 순서대로 다시 시도한다.
         aliases = artist_aliases(artist)
         core = title_core(title)
-        for alt in [f"{aliases[-1]} {core}", f"{aliases[0]} {core} 뮤직비디오", f"{core} {aliases[0]}"]:
+        alts = [f"{aliases[-1]} {core}", f"{aliases[0]} {core} 뮤직비디오", f"{core} {aliases[0]}"]
+        for alt in alts[:1] if API_KEY else alts:
             if alt == query:
                 continue
             time.sleep(0.8)
@@ -198,7 +270,7 @@ def match_song(session: requests.Session, artist: str, title: str, year: int) ->
     for cand in ranked[:3]:
         if rate(cand) < ACCEPT_SCORE:
             return cand, rate(cand), "low"
-        if embeddable(session, cand["id"]):
+        if cand.get("embeddable", True) and embeddable(session, cand["id"]):
             return cand, rate(cand), "ok"
     best = ranked[0] if ranked else None
     return best, rate(best) if best else 0, "none" if not best else "blocked"
@@ -233,7 +305,7 @@ def main() -> int:
     todo = [(a, t) for a, t in first_year if f"{a}|{t}" not in videos]
     if args.limit:
         todo = todo[: args.limit]
-    print(f"매칭 대상 {len(todo)}곡 (이미 연결 {len(videos)}곡)")
+    print(f"매칭 대상 {len(todo)}곡 (이미 연결 {len(videos)}곡) · 검색: {'YouTube Data API' if API_KEY else '검색 페이지'}")
 
     # 이전 실행의 검토 기록은 유지하고, 이번에 다시 처리하는 곡의 줄만 새로 쓴다
     rows: list[list] = []
@@ -258,6 +330,9 @@ def main() -> int:
     for i, (artist, title) in enumerate(todo, 1):
         try:
             cand, sc, status = match_song(session, artist, title, first_year[(artist, title)])
+        except QuotaExceeded as e:
+            print(f"[{i}/{len(todo)}] {e} → 남은 곡은 다음 실행 때 처리")
+            break
         except Exception as e:  # noqa: BLE001
             cand, sc, status = None, 0, "error"
             print(f"[{i}/{len(todo)}] {artist} - {title}: 오류 {e}")
@@ -274,7 +349,20 @@ def main() -> int:
 
     save()
     print(f"\n결과: {counts} · youtube.json {len(videos)}곡 · 검토용 {REVIEW.relative_to(ROOT)}")
+    write_summary(videos)
     return 0
+
+
+def write_summary(videos: dict[str, str]) -> None:
+    """GitHub Actions 실행 화면에 영상 못 찾은 곡 목록을 남긴다."""
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not path:
+        return
+    missing = [(a, t) for a, t in songs_by_first_seen() if f"{a}|{t}" not in videos]
+    lines = [f"### 영상 없는 곡 {len(missing)}곡", ""]
+    lines += [f"- {a} - {t}" for a, t in missing] or ["모든 곡에 영상이 연결됐어요."]
+    with open(path, "a", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
 
 
 if __name__ == "__main__":

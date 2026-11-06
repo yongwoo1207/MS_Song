@@ -5,6 +5,7 @@ import {
   isValid,
   parseISO,
   startOfMonth,
+  subMonths,
   subDays,
 } from "date-fns";
 
@@ -60,16 +61,17 @@ export const toDayParam = (d: Date) => format(d, "yyyy-MM-dd");
 
 /**
  * 진급 최저복무기간: 2019-09-01 시행으로 이병·일병·상병 각 1개월씩 단축
- * (3-7-7개월 → 2-6-6개월). 진급은 해당 달 1일자. 시행일에 새 기준을 이미
- * 채운 병사는 시행일에 진급했다.
+ * (3-7-7개월 → 2-6-6개월). 진급일은 직전 계급 시작일과 같은 날짜로 센다
+ * (10.28 입대 → 12.28 일병). 시행일에 새 기준을 이미 채운 병사는 시행일에
+ * 진급한 것으로 본다.
  */
 const PROMOTION_RULE_CHANGE = parseISO("2019-09-01");
 const PROMOTION_MONTHS = { old: [3, 7, 7], current: [2, 6, 6] } as const;
 
 function nextPromotion(prev: Date, step: 0 | 1 | 2): Date {
-  const old = startOfMonth(addMonths(prev, PROMOTION_MONTHS.old[step]));
+  const old = addMonths(prev, PROMOTION_MONTHS.old[step]);
   if (old < PROMOTION_RULE_CHANGE) return old;
-  const current = startOfMonth(addMonths(prev, PROMOTION_MONTHS.current[step]));
+  const current = addMonths(prev, PROMOTION_MONTHS.current[step]);
   return current > PROMOTION_RULE_CHANGE ? current : PROMOTION_RULE_CHANGE;
 }
 
@@ -121,3 +123,24 @@ export function rankOn(plan: ServicePlan, day: Date): Rank | null {
 
 /** 'YYYY-M' chart key for a date. */
 export const chartKey = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}`;
+
+/** A period's first month counts when it starts on or before this day. */
+const START_CUTOFF_DAY = 20;
+/** A period's last month counts when it reaches at least this day. */
+const END_CUTOFF_DAY = 10;
+
+/**
+ * Chart months for a period: the start month only if the period starts by the
+ * 20th (otherwise from the next month), the end month only if the period
+ * lasts until the 10th or later (otherwise up to the month before). Null when
+ * the period covers no full-enough month.
+ */
+export function chartRange(
+  period: Pick<RankPeriod, "start" | "end">,
+): { from: string; to: string } | null {
+  const { start, end } = period;
+  const first = start.getDate() <= START_CUTOFF_DAY ? start : addMonths(startOfMonth(start), 1);
+  const last = end.getDate() >= END_CUTOFF_DAY ? end : subMonths(startOfMonth(end), 1);
+  if (startOfMonth(last) < startOfMonth(first)) return null;
+  return { from: chartKey(first), to: chartKey(last) };
+}

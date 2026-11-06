@@ -8,8 +8,7 @@ import ServiceSummary from "@/components/ipdae/ServiceSummary";
 import RankTabs from "@/components/ipdae/RankTabs";
 import RankChartPanel from "@/components/ipdae/RankChartPanel";
 import LockedRank from "@/components/ipdae/LockedRank";
-import MiniPlayer from "@/components/ipdae/MiniPlayer";
-import PlayerSheet from "@/components/ipdae/PlayerSheet";
+import NowPlaying from "@/components/ipdae/NowPlaying";
 import EditDatesDrawer from "@/components/ipdae/EditDatesDrawer";
 import { useServicePlan } from "@/hooks/useServicePlan";
 import { useSaveEnlistment } from "@/hooks/useSavedEnlistment";
@@ -32,11 +31,11 @@ export default function Result() {
   const [editing, setEditing] = useState(false);
 
   if (!plan) return <Navigate to="/" replace />;
-  const queuedPeriod = plan.periods.find((p) => p.rank === player.queue?.rank);
 
   return (
     <MobileShell>
       <AppHeader plan={plan} title="내 입대곡" />
+      <NowPlaying player={player} />
 
       <ServiceSummary plan={plan} onEditDates={() => setEditing(true)} />
 
@@ -54,8 +53,6 @@ export default function Result() {
       </Tabs>
 
       <BottomNav />
-      {!player.expanded && <MiniPlayer player={player} />}
-      <PlayerSheet player={player} period={queuedPeriod} />
       <EditDatesDrawer
         plan={plan}
         open={editing}

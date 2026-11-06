@@ -158,6 +158,7 @@ def main() -> int:
     session = requests.Session()
     session.headers.update(HEADERS)
     failed: list[str] = []
+    added = 0
 
     for i, (y, m) in enumerate(todo, 1):
         key = f"{y}-{m}"
@@ -168,17 +169,21 @@ def main() -> int:
             failed.append(key)
         else:
             if songs:
+                added += months.get(key) != songs
                 months[key] = songs
                 print(f"[{i}/{len(todo)}] {key} {len(songs)}곡 · 1위 {songs[0]['title']} - {songs[0]['artist']}")
             else:
                 print(f"[{i}/{len(todo)}] {key} 아직 발표 전")
-        if i % 12 == 0:
+        if i % 12 == 0 and added:
             save(months, args.top)  # 중간 저장
         if i < len(todo):
             time.sleep(args.delay + random.uniform(0, 0.8))
 
-    save(months, args.top)
-    print(f"\n저장: {JSON_PATH.relative_to(ROOT)} ({len(months)}개월), {CSV_PATH.relative_to(ROOT)}")
+    if added:
+        save(months, args.top)
+        print(f"\n저장: {JSON_PATH.relative_to(ROOT)} ({len(months)}개월, 새로 {added}개월), {CSV_PATH.relative_to(ROOT)}")
+    else:
+        print("\n새로 발표된 달이 없어 파일을 그대로 둠")
     if failed:
         print("실패한 달 (다시 실행하면 이 달들만 재시도):", ", ".join(failed))
         return 1

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { aggregateCharts } from "@shared/aggregate";
 import { useChartDB } from "@/hooks/useRankChart";
-import { type ServicePlan, chartKey } from "@/lib/service";
+import { type ServicePlan, chartRange } from "@/lib/service";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /** The #1 song of each rank's period (merged monthly charts). */
@@ -10,10 +10,13 @@ export default function RankTopSongs({ plan }: { plan: ServicePlan }) {
   const rows = useMemo(
     () =>
       db.data
-        ? plan.periods.map((p) => ({
-            rank: p.rank,
-            top: aggregateCharts(db.data!, chartKey(p.start), chartKey(p.end))?.songs[0],
-          }))
+        ? plan.periods.map((p) => {
+            const range = chartRange(p);
+            return {
+              rank: p.rank,
+              top: range ? aggregateCharts(db.data!, range.from, range.to)?.songs[0] : undefined,
+            };
+          })
         : [],
     [db.data, plan],
   );
