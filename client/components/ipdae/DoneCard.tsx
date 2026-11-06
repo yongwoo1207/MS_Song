@@ -1,4 +1,4 @@
-import { Share } from "lucide-react";
+import { ImageDown } from "lucide-react";
 import type { DoneStatus } from "@/lib/dday";
 import { fullDot } from "@/lib/format";
 import type { ServicePlan } from "@/lib/service";
@@ -10,11 +10,12 @@ const SHADES = ["bg-rank-1", "bg-rank-2", "bg-rank-3", "bg-rank-4"];
 export default function DoneCard({
   plan,
   status,
-  onShare,
+  onSaveImage,
 }: {
   plan: ServicePlan;
   status: DoneStatus;
-  onShare: () => void;
+  /** Omit to render without the save button (inside the saved image). */
+  onSaveImage?: () => void;
 }) {
   return (
     <section
@@ -28,17 +29,20 @@ export default function DoneCard({
             D+{status.daysSince.toLocaleString()}
           </span>
           <span className="mt-1.5 text-sm text-muted-foreground">
-            {fullDot(plan.discharge)} 전역 · 총 {plan.serviceDays.toLocaleString()}일 복무
+            {fullDot(plan.discharge)} 전역 · 총{" "}
+            {plan.serviceDays.toLocaleString()}일 복무
           </span>
         </div>
-        <button
-          type="button"
-          aria-label="전역 카드 공유"
-          onClick={onShare}
-          className="flex size-11 shrink-0 items-center justify-center rounded-full border text-foreground hover:bg-muted"
-        >
-          <Share className="size-[18px]" strokeWidth={2} />
-        </button>
+        {onSaveImage && (
+          <button
+            type="button"
+            aria-label="전역 카드 이미지로 저장"
+            onClick={onSaveImage}
+            className="flex size-11 shrink-0 items-center justify-center rounded-full border text-foreground hover:bg-muted"
+          >
+            <ImageDown className="size-[18px]" strokeWidth={2} />
+          </button>
+        )}
       </div>
       <div className="flex flex-col gap-1.5" aria-hidden="true">
         <div className="flex h-2.5 gap-0.5">
@@ -46,13 +50,22 @@ export default function DoneCard({
             <div
               key={p.rank}
               style={{ flexGrow: p.days }}
-              className={cn("basis-0", SHADES[i], i === 0 && "rounded-l-full", i === 3 && "rounded-r-full")}
+              className={cn(
+                "basis-0",
+                SHADES[i],
+                i === 0 && "rounded-l-full",
+                i === 3 && "rounded-r-full",
+              )}
             />
           ))}
         </div>
         <div className="flex text-[11px] text-muted-foreground">
           {plan.periods.map((p) => (
-            <span key={p.rank} style={{ flexGrow: p.days }} className="min-w-max basis-0 pr-1">
+            <span
+              key={p.rank}
+              style={{ flexGrow: p.days }}
+              className="min-w-max basis-0 pr-1"
+            >
               {p.rank}
             </span>
           ))}

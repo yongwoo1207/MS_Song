@@ -1,4 +1,4 @@
-import { Share } from "lucide-react";
+import { ImageDown } from "lucide-react";
 import type { ServingStatus } from "@/lib/dday";
 import { dLabel } from "@/lib/dday";
 import { dayWithWeekday } from "@/lib/format";
@@ -8,11 +8,12 @@ import { cn } from "@/lib/utils";
 interface DdayCardProps {
   plan: ServicePlan;
   status: ServingStatus;
-  onShare: () => void;
+  /** Omit to render without the save button (inside the saved image). */
+  onSaveImage?: () => void;
 }
 
 /** Dark "전역까지 D-n" card with a rank-segmented progress bar. */
-export default function DdayCard({ plan, status, onShare }: DdayCardProps) {
+export default function DdayCard({ plan, status, onSaveImage }: DdayCardProps) {
   // segment boundaries as % of total service days
   let acc = 0;
   const marks = plan.periods.slice(0, -1).map((p) => {
@@ -31,16 +32,20 @@ export default function DdayCard({ plan, status, onShare }: DdayCardProps) {
           <span className="font-mono text-[56px] font-bold leading-none tracking-[-0.02em] min-[380px]:text-[60px]">
             {dLabel(status.daysLeft)}
           </span>
-          <span className="mt-1.5 text-sm text-[#E4E6DE]">{dayWithWeekday(plan.discharge)} 전역</span>
+          <span className="mt-1.5 text-sm text-[#E4E6DE]">
+            {dayWithWeekday(plan.discharge)} 전역
+          </span>
         </div>
-        <button
-          type="button"
-          aria-label="D-day 카드 공유"
-          onClick={onShare}
-          className="flex size-11 shrink-0 items-center justify-center rounded-full border border-[#4A4E43] text-white hover:bg-white/10"
-        >
-          <Share className="size-[18px]" strokeWidth={2} />
-        </button>
+        {onSaveImage && (
+          <button
+            type="button"
+            aria-label="D-day 카드 이미지로 저장"
+            onClick={onSaveImage}
+            className="flex size-11 shrink-0 items-center justify-center rounded-full border border-[#4A4E43] text-white hover:bg-white/10"
+          >
+            <ImageDown className="size-[18px]" strokeWidth={2} />
+          </button>
+        )}
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -57,7 +62,11 @@ export default function DdayCard({ plan, status, onShare }: DdayCardProps) {
             style={{ width: `${status.progress}%` }}
           />
           {marks.map((m) => (
-            <div key={m} className="absolute inset-y-0 w-0.5 bg-foreground" style={{ left: `${m}%` }} />
+            <div
+              key={m}
+              className="absolute inset-y-0 w-0.5 bg-foreground"
+              style={{ left: `${m}%` }}
+            />
           ))}
         </div>
         <div className="flex text-[11px] text-[#A9AD9F]" aria-hidden="true">
@@ -76,7 +85,9 @@ export default function DdayCard({ plan, status, onShare }: DdayCardProps) {
         </div>
         <span className="text-[13px] text-[#E4E6DE]">
           {status.dayOfService.toLocaleString()}일째 복무 중 ·{" "}
-          <span className="font-mono font-semibold">{status.progress.toFixed(1)}%</span>
+          <span className="font-mono font-semibold">
+            {status.progress.toFixed(1)}%
+          </span>
         </span>
       </div>
     </section>

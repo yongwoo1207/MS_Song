@@ -28,6 +28,15 @@ describe("aggregateCharts", () => {
     expect(res.songs[0].rank).toBe(1);
   });
 
+  it("remembers the months each song was #1", () => {
+    const res = aggregateCharts(db, "2023-5", "2023-6")!;
+    expect(res.songs.map((s) => [s.title, s.numberOneMonths])).toEqual([
+      ["B", ["2023-6"]],
+      ["A", ["2023-5"]],
+      ["C", []],
+    ]);
+  });
+
   it("returns empty songs when no month has data", () => {
     const res = aggregateCharts(db, "2010-2", "2010-3")!;
     expect(res.songs).toEqual([]);

@@ -36,6 +36,7 @@ export type ChartDB = Record<string, ChartMonth>;
 export interface RankedChartSong extends ChartSong {
   score: number; // summed rank points across the period
   bestRank: number; // best monthly rank inside the period
+  numberOneMonths: string[]; // 'YYYY-M' months it was #1 inside the period
 }
 
 export interface ChartRangeResult {

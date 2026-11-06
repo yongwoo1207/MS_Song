@@ -9,6 +9,12 @@ interface SongRowProps {
   onPlay?: () => void;
 }
 
+/** '2025-3' → '25년 03월' */
+const monthLabel = (key: string) => {
+  const [y, m] = key.split("-");
+  return `${y.slice(2)}년 ${m.padStart(2, "0")}월`;
+};
+
 export default function SongRow({ song, active, onPlay }: SongRowProps) {
   return (
     <li>
@@ -35,9 +41,19 @@ export default function SongRow({ song, active, onPlay }: SongRowProps) {
           <span className="truncate text-[15px] font-bold">{song.title}</span>
           <span className="truncate text-[13px] text-muted-foreground">{song.artist}</span>
         </span>
-        {song.rank === 1 && (
-          <span className="whitespace-nowrap rounded-md bg-accent px-1.5 py-[3px] text-[11px] font-bold text-primary">
-            이 시기 1위
+        {song.numberOneMonths.length > 0 && (
+          <span
+            className="flex shrink-0 items-center gap-1"
+            title={song.numberOneMonths.map(monthLabel).join(", ") + " 월간 1위"}
+          >
+            <span className="whitespace-nowrap rounded-md bg-accent px-1.5 py-[3px] text-[11px] font-bold text-primary">
+              {monthLabel(song.numberOneMonths[0])} 1위
+            </span>
+            {song.numberOneMonths.length > 1 && (
+              <span className="whitespace-nowrap text-[11px] font-bold text-primary">
+                +{song.numberOneMonths.length - 1}
+              </span>
+            )}
           </span>
         )}
         {onPlay ? (
