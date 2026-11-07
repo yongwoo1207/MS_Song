@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { LogOut } from "lucide-react";
+import { HOME_COUNTRY } from "@/lib/country";
 import type { ServicePlan } from "@/lib/service";
 import { fullDot } from "@/lib/format";
 import { clearSavedEnlistment } from "@/hooks/useSavedEnlistment";
@@ -14,7 +15,8 @@ export default function AppHeader({ plan, title }: { plan: ServicePlan; title: s
   return (
     <header className="flex items-center justify-between pb-1 pl-5 pr-3 pt-4">
       <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-xs text-muted-foreground">
+        <span className="font-mono text-[11px] text-ink-icon">
+          <span aria-hidden="true">{HOME_COUNTRY.flag} </span>
           {fullDot(plan.enlist)} {plan.branch} 입대
         </span>
         <h1 className="truncate text-lg font-bold">{title}</h1>

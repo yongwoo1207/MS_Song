@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { aggregateCharts } from "@shared/aggregate";
 import { useChartDB } from "@/hooks/useRankChart";
 import { type ServicePlan, chartRange } from "@/lib/service";
@@ -7,8 +8,16 @@ import { isLockedRank } from "@/lib/dday";
 import { startOfDay } from "date-fns";
 
 /** The #1 song of each rank's period (merged monthly charts). */
-export default function RankTopSongs({ plan }: { plan: ServicePlan }) {
+export default function RankTopSongs({
+  plan,
+  listenAll,
+}: {
+  plan: ServicePlan;
+  /** Show the "전체 듣기" link to the 차트 tab */
+  listenAll?: boolean;
+}) {
   const db = useChartDB();
+  const { search } = useLocation();
   const rows = useMemo(
     () =>
       db.data
@@ -30,7 +39,17 @@ export default function RankTopSongs({ plan }: { plan: ServicePlan }) {
 
   return (
     <section className="flex flex-col rounded-2xl border bg-card px-3.5 pb-2.5 pt-1.5">
-      <h2 className="pb-1 pt-2 text-sm font-bold">계급별 1위곡</h2>
+      <div className="flex items-center justify-between pb-1 pt-2">
+        <h2 className="text-sm font-bold">계급별 1위곡</h2>
+        {listenAll && (
+          <Link
+            to={`/result${search}`}
+            className="text-xs font-bold text-primary hover:underline"
+          >
+            전체 듣기
+          </Link>
+        )}
+      </div>
       {db.isLoading && <Skeleton className="h-40 rounded-xl bg-muted" />}
       <ul>
         {rows.map(({ rank, top, ongoing }) => (
