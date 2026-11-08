@@ -56,6 +56,7 @@ export interface MonthRange {
   from: string; // 'YYYY-MM'
   to: string;
   cohort?: string; // only this 군번
+  songs?: boolean; // song memories filed under those months too
 }
 
 export interface MemoryStore {
@@ -69,6 +70,10 @@ export interface MemoryStore {
   addLetter(input: NewLetter): Promise<Memory>;
   remove(id: string): Promise<void>;
   toggleLike(id: string): Promise<{ liked: boolean; likes: number }>;
+  /** Everything written from this device, hidden ones too. */
+  listMine(): Promise<Memory[]>;
+  /** song key → number of memories under it */
+  songCounts(): Promise<Record<string, number>>;
 }
 
 export const MEMORY_MAX_LENGTH = RECORD_MAX_LENGTH;
@@ -108,9 +113,10 @@ export const apiMemoryStore: MemoryStore = {
     );
     return data.posts;
   },
-  async listMonths({ from, to, cohort }) {
+  async listMonths({ from, to, cohort, songs }) {
     const q = new URLSearchParams({ from, to });
     if (cohort) q.set("cohort", cohort);
+    if (songs) q.set("songs", "1");
     const data = await call<{ posts: Memory[] }>(`?${q}`);
     return data.posts;
   },
@@ -168,6 +174,16 @@ export const apiMemoryStore: MemoryStore = {
   toggleLike(id) {
     return call(`/${encodeURIComponent(id)}/like`, { method: "POST" });
   },
+  async listMine() {
+    const data = await apiCall<{ posts: Memory[] }>("/api/me/posts");
+    return data.posts;
+  },
+  async songCounts() {
+    const data = await apiCall<{ counts: Record<string, number> }>(
+      "/api/song-counts",
+    );
+    return data.counts;
+  },
 };
 
 export const memoryStore: MemoryStore = apiMemoryStore;
@@ -186,6 +202,22 @@ export function monthParam(month: string | Date): string {
 export function cohortLabel(cohortMonth: string) {
   const [y, m] = cohortMonth.split("-");
   return `${y}년 ${Number(m)}월 군번`;
+}
+
+/** '2021-03' → "2021년 3월" */
+export function monthLabel(month: string) {
+  const [y, m] = month.split("-");
+  return `${y}년 ${Number(m)}월`;
+}
+
+/** Where a post lives, e.g. "♪ LOVE DIVE · IVE", "상병 2호봉 후임에게". */
+export function postContext(
+  p: Pick<Memory, "kind" | "song" | "rank" | "hobong" | "aboutMonth">,
+): string {
+  if (p.song) return `♪ ${p.song.title} · ${p.song.artist}`;
+  if (p.kind === "letter") return `${p.rank} ${p.hobong}호봉 후임에게`;
+  if (p.aboutMonth) return `${monthLabel(p.aboutMonth)} 타임라인`;
+  return "";
 }
 
 /** "방금 전", "5분 전", "3시간 전", "2일 전", then the date */

@@ -1,5 +1,6 @@
 import { ExternalLink } from "lucide-react";
 import { useRankChart } from "@/hooks/useRankChart";
+import { useSongCounts } from "@/hooks/useMyPosts";
 import type { Player } from "@/hooks/usePlayer";
 import { shortDot, youtubeQueue } from "@/lib/format";
 import type { RankPeriod } from "@/lib/service";
@@ -25,6 +26,7 @@ export default function RankChartPanel({
   const songs = data?.songs ?? [];
   const playable = songs.filter((s) => s.youtubeId);
   const queued = player.queue?.rank === period.rank;
+  const counts = useSongCounts();
 
   return (
     <div className="flex flex-col">
@@ -85,6 +87,7 @@ export default function RankChartPanel({
               <SongRow
                 key={songKey(song)}
                 song={song}
+                memories={counts?.[songKey(song)]}
                 active={
                   queued &&
                   !!player.current &&

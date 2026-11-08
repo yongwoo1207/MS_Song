@@ -3,9 +3,10 @@
  * D1. Only /api/* reaches this code (see run_worker_first in wrangler.jsonc).
  *
  *   GET    /api/posts?song=<key>     memories under a song, newest first
- *   GET    /api/posts?from=YYYY-MM&to=YYYY-MM[&cohort=YYYY-MM]
+ *   GET    /api/posts?from=YYYY-MM&to=YYYY-MM[&cohort=YYYY-MM][&songs=1]
  *                                    records written to those timeline
- *                                    months, by month then most liked
+ *                                    months (songs=1: song memories filed
+ *                                    under them too), by month, most liked
  *   GET    /api/posts?kind=letter&rank=상병&hobong=2
  *   GET    /api/posts?kind=letter&mine=1   (my own 한마디)
  *                                    한마디 left for that 계급·호봉, most liked
@@ -16,6 +17,11 @@
  *   POST   /api/posts/:id/report     report ({ reason })
  *   GET    /api/events?from=YYYY-MM&to=YYYY-MM
  *                                    major issues (사건) of those months
+ *   GET    /api/song-counts          { counts: { songKey: memories } }
+ *   GET    /api/me/posts             everything I wrote (hidden ones too)
+ *   GET    /api/notifications[?count=1]
+ *                                    likes on my posts, grouped per post
+ *   POST   /api/notifications/read   mark all read
  *
  * Callers are anonymous: the browser sends a random device token and only
  * its SHA-256 hash is stored, as authors.id.
@@ -23,6 +29,7 @@
 import { z } from "zod";
 import {
   type ApiEvent,
+  type ApiNotification,
   type ApiPost,
   DEVICE_HEADER,
   LETTER_MAX_LENGTH,
@@ -162,6 +169,7 @@ interface PostRow {
   reply_count: number;
   created_at: string;
   author_id: string;
+  status: "visible" | "hidden" | "deleted";
   liked_by_me: number;
 }
 
@@ -183,6 +191,7 @@ const toApi = (r: PostRow, me: string | null): ApiPost => ({
   createdAt: r.created_at,
   likedByMe: !!r.liked_by_me,
   mine: !!me && r.author_id === me,
+  hidden: r.status === "hidden",
 });
 
 const SELECT_POST = `
@@ -248,6 +257,7 @@ async function listMonthRecords(req: Request, env: Env, url: URL) {
   const from = url.searchParams.get("from") ?? "";
   const to = url.searchParams.get("to") ?? "";
   const cohort = url.searchParams.get("cohort");
+  const songs = url.searchParams.get("songs") === "1" ? 1 : 0;
   if (!MONTH.test(from) || !MONTH.test(to) || from > to) {
     throw new HttpError(400, "from, to 값이 필요해요 (YYYY-MM)");
   }
@@ -258,13 +268,13 @@ async function listMonthRecords(req: Request, env: Env, url: URL) {
   const { results } = await env.DB.prepare(
     `${SELECT_POST}
      WHERE p.kind = 'record' AND p.status = 'visible'
-       AND p.song_key IS NULL AND p.event_id IS NULL
+       AND (?6 = 1 OR p.song_key IS NULL) AND p.event_id IS NULL
        AND p.about_month BETWEEN ?2 AND ?3
        AND (?4 IS NULL OR p.cohort_month = ?4)
      ORDER BY p.about_month, p.like_count DESC, p.created_at DESC
      LIMIT ?5`,
   )
-    .bind(me ?? "", from, to, cohort, TIMELINE_LIMIT)
+    .bind(me ?? "", from, to, cohort, TIMELINE_LIMIT, songs)
     .all<PostRow>();
   return json({ posts: results.map((r) => toApi(r, me)) });
 }
@@ -303,6 +313,138 @@ async function listLetters(req: Request, env: Env, url: URL) {
     .bind(me ?? "", rank.data, hobong)
     .all<PostRow>();
   return json({ posts: results.map((r) => toApi(r, me)) });
+}
+
+/** How many memories each song has, for the chart lists. */
+async function songCounts(env: Env) {
+  const { results } = await env.DB.prepare(
+    `SELECT song_key AS k, COUNT(*) AS n FROM posts
+     WHERE kind = 'record' AND song_key IS NOT NULL AND status = 'visible'
+     GROUP BY song_key`,
+  ).all<{ k: string; n: number }>();
+  return json({ counts: Object.fromEntries(results.map((r) => [r.k, r.n])) });
+}
+
+/** Everything the caller wrote, newest first, hidden (reported) ones too. */
+async function listMyPosts(req: Request, env: Env) {
+  const me = await authorOf(req);
+  if (!me) return json({ posts: [] });
+  const { results } = await env.DB.prepare(
+    `${SELECT_POST}
+     WHERE p.author_id = ?1 AND p.status <> 'deleted'
+     ORDER BY p.created_at DESC
+     LIMIT 200`,
+  )
+    .bind(me)
+    .all<PostRow>();
+  return json({ posts: results.map((r) => toApi(r, me)) });
+}
+
+interface NotificationRow {
+  type: ApiNotification["type"];
+  post_id: string;
+  count: number;
+  unread: number;
+  last_at: string;
+  kind: ApiPost["kind"];
+  body: string;
+  song_title: string | null;
+  rank: ApiPost["rank"];
+  hobong: number | null;
+  about_month: string | null;
+}
+
+/** Likes on my posts, one entry per post and type, newest activity first. */
+async function listNotifications(req: Request, env: Env, url: URL) {
+  const onlyCount = url.searchParams.get("count") === "1";
+  const me = await authorOf(req);
+  if (!me) {
+    return json(onlyCount ? { unread: 0 } : { unread: 0, notifications: [] });
+  }
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM notifications n
+     JOIN posts p ON p.id = n.post_id
+     WHERE n.recipient_id = ? AND n.read_at IS NULL AND p.status <> 'deleted'`,
+  )
+    .bind(me)
+    .first<{ n: number }>();
+  const unread = row?.n ?? 0;
+  if (onlyCount) return json({ unread });
+  const { results } = await env.DB.prepare(
+    `SELECT n.type, n.post_id, COUNT(*) AS count,
+            SUM(n.read_at IS NULL) AS unread, MAX(n.created_at) AS last_at,
+            p.kind, p.body, p.song_title, p.rank, p.hobong, p.about_month
+     FROM notifications n
+     JOIN posts p ON p.id = n.post_id
+     WHERE n.recipient_id = ? AND p.status <> 'deleted'
+     GROUP BY n.type, n.post_id
+     ORDER BY last_at DESC
+     LIMIT 50`,
+  )
+    .bind(me)
+    .all<NotificationRow>();
+  const notifications: ApiNotification[] = results.map((r) => ({
+    type: r.type,
+    postId: r.post_id,
+    count: r.count,
+    unread: r.unread,
+    lastAt: r.last_at,
+    post: {
+      kind: r.kind,
+      body: r.body,
+      songTitle: r.song_title,
+      rank: r.rank,
+      hobong: r.hobong,
+      aboutMonth: r.about_month,
+    },
+  }));
+  return json({ unread, notifications });
+}
+
+async function markNotificationsRead(req: Request, env: Env) {
+  const me = await authorOf(req);
+  if (!me) throw new HttpError(401, "기기 정보가 없어요");
+  await env.DB.prepare(
+    `UPDATE notifications SET read_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+     WHERE recipient_id = ? AND read_at IS NULL`,
+  )
+    .bind(me)
+    .run();
+  return new Response(null, { status: 204 });
+}
+
+/**
+ * Tell the author about a like (never about their own). An unread one is
+ * taken back on unlike. Best effort: the like still counts if this fails.
+ */
+async function notifyLike(
+  db: D1Database,
+  postId: string,
+  actor: string,
+  liked: boolean,
+) {
+  try {
+    if (liked) {
+      await db
+        .prepare(
+          `INSERT OR IGNORE INTO notifications (recipient_id, type, post_id, actor_id)
+           SELECT author_id, 'like', id, ?2 FROM posts
+           WHERE id = ?1 AND author_id <> ?2`,
+        )
+        .bind(postId, actor)
+        .run();
+    } else {
+      await db
+        .prepare(
+          `DELETE FROM notifications
+           WHERE type = 'like' AND post_id = ? AND actor_id = ? AND read_at IS NULL`,
+        )
+        .bind(postId, actor)
+        .run();
+    }
+  } catch (err) {
+    console.error("notifyLike failed", err);
+  }
 }
 
 /** Rate limits shared by every kind of post. */
@@ -468,6 +610,7 @@ async function toggleLike(req: Request, env: Env, id: string) {
   )
     .bind(liked ? 1 : -1, id)
     .first<{ like_count: number }>();
+  await notifyLike(env.DB, id, me, liked);
   return json({ liked, likes: row?.like_count ?? 0 });
 }
 
@@ -501,6 +644,25 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
 
   if (resource === "events" && parts.length === 2 && req.method === "GET") {
     return listEvents(env, url);
+  }
+  if (
+    resource === "song-counts" &&
+    parts.length === 2 &&
+    req.method === "GET"
+  ) {
+    return songCounts(env);
+  }
+  if (resource === "me" && id === "posts" && parts.length === 3) {
+    if (req.method === "GET") return listMyPosts(req, env);
+  }
+  if (resource === "notifications") {
+    if (parts.length === 2 && req.method === "GET") {
+      return listNotifications(req, env, url);
+    }
+    if (id === "read" && parts.length === 3 && req.method === "POST") {
+      return markNotificationsRead(req, env);
+    }
+    throw new HttpError(404, "없는 주소예요");
   }
   if (resource !== "posts" || parts.length > 4)
     throw new HttpError(404, "없는 주소예요");

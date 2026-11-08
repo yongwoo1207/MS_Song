@@ -1,3 +1,4 @@
+import { MessageCircle } from "lucide-react";
 import type { RankedChartSong } from "@shared/api";
 import { cn } from "@/lib/utils";
 import { PlayIcon } from "./icons";
@@ -5,6 +6,8 @@ import { PlayIcon } from "./icons";
 interface SongRowProps {
   song: RankedChartSong;
   active: boolean;
+  /** How many memories people left under the song */
+  memories?: number;
   /** Missing when no video is matched yet; the row is then not playable. */
   onPlay?: () => void;
 }
@@ -15,7 +18,12 @@ const monthLabel = (key: string) => {
   return `${y.slice(2)}년 ${m.padStart(2, "0")}월`;
 };
 
-export default function SongRow({ song, active, onPlay }: SongRowProps) {
+export default function SongRow({
+  song,
+  active,
+  memories = 0,
+  onPlay,
+}: SongRowProps) {
   return (
     <li>
       <button
@@ -39,12 +47,29 @@ export default function SongRow({ song, active, onPlay }: SongRowProps) {
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="truncate text-[15px] font-bold">{song.title}</span>
-          <span className="truncate text-[13px] text-muted-foreground">{song.artist}</span>
+          <span className="truncate text-[13px] text-muted-foreground">
+            {song.artist}
+          </span>
         </span>
+        {memories > 0 && (
+          <span
+            className="flex shrink-0 items-center gap-0.5 text-[11.5px] font-bold text-primary"
+            aria-label={`추억 ${memories}개`}
+          >
+            <MessageCircle
+              className="size-3.5"
+              strokeWidth={2.2}
+              aria-hidden="true"
+            />
+            {memories}
+          </span>
+        )}
         {song.numberOneMonths.length > 0 && (
           <span
             className="flex shrink-0 items-center gap-1"
-            title={song.numberOneMonths.map(monthLabel).join(", ") + " 월간 1위"}
+            title={
+              song.numberOneMonths.map(monthLabel).join(", ") + " 월간 1위"
+            }
           >
             <span className="whitespace-nowrap rounded-md bg-accent px-1.5 py-[3px] text-[11px] font-bold text-primary">
               {monthLabel(song.numberOneMonths[0])} 1위

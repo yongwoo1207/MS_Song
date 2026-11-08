@@ -1,6 +1,12 @@
 import { useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { ExternalLink, Heart, PenLine, ShieldAlert } from "lucide-react";
+import {
+  ExternalLink,
+  Heart,
+  MessageCircle,
+  PenLine,
+  ShieldAlert,
+} from "lucide-react";
 import { toast } from "sonner";
 import type { ChartDB, ChartSong } from "@shared/api";
 import MobileShell from "@/components/ipdae/MobileShell";
@@ -27,11 +33,12 @@ import { type ServiceMonth, asMonthSong, serviceMonths } from "@/lib/timeline";
 import { cn } from "@/lib/utils";
 
 const PREVIEW = 3; // records shown per month before "모두 보기"
+const SONG_PREVIEW = 2; // song memories shown per month before "모두 보기"
 
 /**
  * 타임라인: the user's service month by month. Each chapter shows that
- * month's #1 song and major issues (사건), and the records people wrote
- * about that month of their service.
+ * month's #1 song and major issues (사건), memories people left on that
+ * month's songs, and the records people wrote about that month.
  */
 export default function Timeline() {
   const { plan } = useServicePlan();
@@ -46,8 +53,16 @@ export default function Timeline() {
           to: months[months.length - 1].param,
         }
       : null;
-  const { byMonth, isLoading, isError, refetch, add, remove, like } =
-    useTimeline(range);
+  const {
+    byMonth,
+    songsByMonth,
+    isLoading,
+    isError,
+    refetch,
+    add,
+    remove,
+    like,
+  } = useTimeline(range);
   const events = useEvents(range);
 
   if (!plan) return <Navigate to="/" replace />;
@@ -96,6 +111,7 @@ export default function Timeline() {
             chart={chart.data}
             events={events.data?.get(m.param) ?? []}
             records={byMonth?.get(m.param) ?? []}
+            songMemories={songsByMonth?.get(m.param) ?? []}
             player={player}
             author={author}
             saving={add.isPending}
@@ -124,6 +140,7 @@ function MonthChapter({
   chart,
   events,
   records,
+  songMemories,
   player,
   author,
   saving,
@@ -135,6 +152,8 @@ function MonthChapter({
   chart: ChartDB | undefined;
   events: ServiceEvent[];
   records: Memory[];
+  /** Memories left on songs, filed under this month's chart */
+  songMemories: Memory[];
   player: Player;
   author: MemoryAuthor;
   saving: boolean;
@@ -143,9 +162,13 @@ function MonthChapter({
   onDelete: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [songsExpanded, setSongsExpanded] = useState(false);
   const [writing, setWriting] = useState(false);
   const top = chart?.[month.key]?.songs.find((s) => s.rank === 1);
   const shown = expanded ? records : records.slice(0, PREVIEW);
+  const songsShown = songsExpanded
+    ? songMemories
+    : songMemories.slice(0, SONG_PREVIEW);
 
   const play = (song: ChartSong) =>
     player.play(
@@ -239,6 +262,41 @@ function MonthChapter({
         </div>
       )}
 
+      {songMemories.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <h3 className="flex items-center gap-1 text-[11.5px] font-bold text-ink-icon">
+            <MessageCircle
+              className="size-3.5"
+              strokeWidth={2.2}
+              aria-hidden="true"
+            />
+            이 달 노래에 남긴 추억 {songMemories.length}
+          </h3>
+          <ul className="flex flex-col rounded-xl bg-background px-3 py-2">
+            {songsShown.map((m) => (
+              <RecordRow
+                key={m.id}
+                memory={m}
+                onLike={() => onLike(m.id)}
+                onDelete={() => onDelete(m.id)}
+              />
+            ))}
+          </ul>
+          {songMemories.length > SONG_PREVIEW && (
+            <button
+              type="button"
+              onClick={() => setSongsExpanded((v) => !v)}
+              aria-expanded={songsExpanded}
+              className="h-8 rounded-xl text-[12px] font-bold text-primary"
+            >
+              {songsExpanded
+                ? "접기"
+                : `노래 추억 ${songMemories.length}개 모두 보기`}
+            </button>
+          )}
+        </div>
+      )}
+
       {records.length > 0 && (
         <ul className="flex flex-col" aria-label="이 달의 기록">
           {shown.map((m) => (
@@ -310,6 +368,11 @@ function RecordRow({
 }) {
   return (
     <li className="flex flex-col gap-1 border-t border-muted py-2.5 first:border-t-0 first:pt-0.5">
+      {m.song && (
+        <span className="truncate text-[12px] font-bold text-primary">
+          ♪ {m.song.title} · {m.song.artist}
+        </span>
+      )}
       <span className="text-[11px] text-ink-icon">
         {cohortLabel(m.cohortMonth)} · 당시 {m.rank}
         {m.hobong ? ` ${m.hobong}호봉` : ""}

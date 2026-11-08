@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { invalidatePosts } from "./postsCache";
 import { type HobongSlot, type NewLetter, memoryStore } from "@/lib/memories";
 
 /**
@@ -8,16 +9,20 @@ import { type HobongSlot, type NewLetter, memoryStore } from "@/lib/memories";
 export function useLetters(slot: HobongSlot | "mine" | null) {
   const qc = useQueryClient();
   const key =
-    slot === "mine" ? ["letters", "mine"] : ["letters", slot?.rank, slot?.hobong];
+    slot === "mine"
+      ? ["letters", "mine"]
+      : ["letters", slot?.rank, slot?.hobong];
   const list = useQuery({
     queryKey: key,
     queryFn: () =>
-      slot === "mine" ? memoryStore.listMyLetters() : memoryStore.listLetters(slot!),
+      slot === "mine"
+        ? memoryStore.listMyLetters()
+        : memoryStore.listLetters(slot!),
     enabled: !!slot,
     staleTime: 30_000,
     retry: 1,
   });
-  const refresh = () => qc.invalidateQueries({ queryKey: ["letters"] });
+  const refresh = () => invalidatePosts(qc);
 
   const add = useMutation({
     mutationFn: (l: NewLetter) => memoryStore.addLetter(l),

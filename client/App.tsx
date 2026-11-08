@@ -12,6 +12,8 @@ import Dday from "./pages/Dday";
 import Community from "./pages/Community";
 import Timeline from "./pages/Timeline";
 import Leave from "./pages/Leave";
+import My from "./pages/My";
+import Notifications from "./pages/Notifications";
 import NotFound from "./pages/NotFound";
 import Layout from "@/components/Layout";
 
@@ -30,6 +32,8 @@ const App = () => (
           <Route path="/timeline" element={<Timeline />} />
           <Route path="/community" element={<Community />} />
           <Route path="/leave" element={<Leave />} />
+          <Route path="/me" element={<My />} />
+          <Route path="/notifications" element={<Notifications />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route
             path="*"

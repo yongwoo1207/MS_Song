@@ -14,6 +14,9 @@ export default defineConfig(({ mode }) => ({
     proxy: {
       "/api/posts": "http://127.0.0.1:8787",
       "/api/events": "http://127.0.0.1:8787",
+      "/api/song-counts": "http://127.0.0.1:8787",
+      "/api/me": "http://127.0.0.1:8787",
+      "/api/notifications": "http://127.0.0.1:8787",
     },
     fs: {
       allow: [
@@ -41,10 +44,10 @@ function expressPlugin(): Plugin {
     configureServer(server) {
       const app = createServer();
 
-      // Add Express app as middleware to Vite dev server. /api/posts and
-      // /api/events belong to the Worker: skip them so the dev proxy gets them.
+      // Add Express app as middleware to Vite dev server. The posts API
+      // belongs to the Worker: skip it so the dev proxy gets it.
       server.middlewares.use((req, res, next) =>
-        /^\/api\/(posts|events)(\/|\?|$)/.test(req.url ?? "")
+        /^\/api\/(posts|events|song-counts|me|notifications)(\/|\?|$)/.test(req.url ?? "")
           ? next()
           : app(req as express.Request, res as express.Response, next),
       );

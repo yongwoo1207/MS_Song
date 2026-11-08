@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { invalidatePosts } from "./postsCache";
 import { type NewMemory, memoryStore } from "@/lib/memories";
 
 /** Memories for one song plus add / delete / like actions. */
@@ -12,10 +13,7 @@ export function useMemories(song: string | undefined) {
     staleTime: 30_000,
     retry: 1,
   });
-  const refresh = () => {
-    qc.invalidateQueries({ queryKey: key });
-    qc.invalidateQueries({ queryKey: ["timeline"] });
-  };
+  const refresh = () => invalidatePosts(qc);
 
   const add = useMutation({
     mutationFn: (m: NewMemory) => memoryStore.add(m),

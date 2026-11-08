@@ -88,6 +88,25 @@ export interface ApiPost {
   createdAt: string; // ISO
   likedByMe: boolean;
   mine: boolean;
+  /** Hidden after reports. Only ever true in my own list. */
+  hidden?: boolean;
+}
+
+/** Activity on one of my posts, as GET /api/notifications returns it. */
+export interface ApiNotification {
+  type: "like" | "reply";
+  postId: string;
+  count: number; // how many people
+  unread: number; // of which not seen yet
+  lastAt: string; // ISO, the latest one
+  post: {
+    kind: ApiPost["kind"];
+    body: string;
+    songTitle: string | null;
+    rank: PostRank | null;
+    hobong: number | null;
+    aboutMonth: string | null;
+  };
 }
 
 export const DEVICE_HEADER = "X-Device-Token";
