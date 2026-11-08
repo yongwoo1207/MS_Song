@@ -5,10 +5,10 @@ import AppHeader from "@/components/ipdae/AppHeader";
 import BottomNav from "@/components/ipdae/BottomNav";
 import DdayCard from "@/components/ipdae/DdayCard";
 import SeniorsCard from "@/components/ipdae/SeniorsCard";
-import LeaveCta from "@/components/ipdae/LeaveCta";
 import MilestoneList from "@/components/ipdae/MilestoneList";
 import SongsShortcut from "@/components/ipdae/SongsShortcut";
 import DoneCard from "@/components/ipdae/DoneCard";
+import NotYetCard from "@/components/ipdae/NotYetCard";
 import RankTopSongs from "@/components/ipdae/RankTopSongs";
 import EditDatesDrawer from "@/components/ipdae/EditDatesDrawer";
 import CardSnapshot from "@/components/ipdae/CardSnapshot";
@@ -22,7 +22,6 @@ import { useServicePlan } from "@/hooks/useServicePlan";
 import { useChartDB } from "@/hooks/useRankChart";
 import { useSaveEnlistment } from "@/hooks/useSavedEnlistment";
 import { dLabel, ddayStatus } from "@/lib/dday";
-import { dayWithWeekday, fullDot } from "@/lib/format";
 
 export default function Dday() {
   const { plan, setOverrides } = useServicePlan();
@@ -57,7 +56,7 @@ export default function Dday() {
               status={status}
               onSaveImage={() => setSnapshot(true)}
             />
-            <SeniorsCard daysLeft={status.daysLeft} />
+            <SeniorsCard plan={plan} mode="serving" />
             <MilestoneList
               title="다가오는 날"
               items={status.upcoming}
@@ -83,7 +82,7 @@ export default function Dday() {
               status={status}
               onSaveImage={() => setSnapshot(true)}
             />
-            <LeaveCta />
+            <SeniorsCard plan={plan} mode="reserve" />
             <MilestoneList
               title="다가오는 기념일"
               items={status.anniversaries}
@@ -93,21 +92,43 @@ export default function Dday() {
         )}
 
         {status.status === "notYet" && (
-          <p className="rounded-2xl border bg-card p-5 text-sm leading-relaxed text-muted-foreground">
-            {fullDot(plan.enlist)} 입대 예정이에요. 전역 예정일은{" "}
-            {dayWithWeekday(plan.discharge)}
-            입니다.
-          </p>
+          <>
+            <NotYetCard
+              plan={plan}
+              status={status}
+              onSaveImage={() => setSnapshot(true)}
+            />
+            <MilestoneList
+              title="입대 후 일정"
+              items={status.upcoming}
+              strong="전역"
+              action={
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  className="h-8 text-xs font-bold text-primary hover:underline"
+                >
+                  진급일이 다르면 수정
+                </button>
+              }
+            />
+            <p className="rounded-2xl border bg-card px-4 py-3.5 text-[13px] leading-relaxed text-muted-foreground">
+              입대하면 계급마다 그 시절 차트가 쌓이고, 같은 호봉 선배들이 남긴
+              한마디를 볼 수 있어요.
+            </p>
+          </>
         )}
       </main>
 
       <BottomNav />
-      {snapshot && status.status !== "notYet" && (
+      {snapshot && (
         <CardSnapshot
           fileName={
             status.status === "serving"
               ? `ipdaegok-${dLabel(status.daysLeft)}.png`
-              : `ipdaegok-D+${status.daysSince}.png`
+              : status.status === "done"
+                ? `ipdaegok-D+${status.daysSince}.png`
+                : `ipdaegok-입대${dLabel(status.daysLeft)}.png`
           }
           title="입대곡"
           text={pageUrl}
@@ -119,10 +140,12 @@ export default function Dday() {
         >
           {status.status === "serving" ? (
             <DdayCard plan={plan} status={status} />
-          ) : (
+          ) : status.status === "done" ? (
             <DoneCard plan={plan} status={status} />
+          ) : (
+            <NotYetCard plan={plan} status={status} />
           )}
-          <RankTopSongs plan={plan} />
+          {status.status !== "notYet" && <RankTopSongs plan={plan} />}
         </CardSnapshot>
       )}
       <Drawer

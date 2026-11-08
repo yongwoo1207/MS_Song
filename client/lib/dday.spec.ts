@@ -76,6 +76,27 @@ describe("ddayStatus (done)", () => {
   });
 });
 
+describe("ddayStatus (notYet)", () => {
+  // 입대 예정자: 2027-03-02 공군, today 2026-11-09
+  const plan = computeService(day("2027-03-02"), "공군");
+  const s = ddayStatus(plan, day("2026-11-09"));
+
+  it("counts down to enlistment and lists the whole schedule", () => {
+    if (s.status !== "notYet") throw new Error(s.status);
+    expect(s.daysLeft).toBe(113);
+    expect(s.dischargeDaysLeft).toBe(s.upcoming[s.upcoming.length - 1].daysLeft);
+    expect(s.upcoming.map((m) => m.label)).toEqual([
+      "입대",
+      "일병 진급",
+      "상병 진급",
+      "병장 진급",
+      "전역",
+    ]);
+    expect(fmt(s.upcoming[0].date)).toBe("2027-03-02");
+    expect(fmt(s.upcoming[4].date)).toBe(fmt(plan.discharge));
+  });
+});
+
 describe("dLabel", () => {
   it("formats", () => {
     expect(dLabel(5)).toBe("D-5");

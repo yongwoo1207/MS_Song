@@ -13,7 +13,8 @@ import EditDatesDrawer from "@/components/ipdae/EditDatesDrawer";
 import { useServicePlan } from "@/hooks/useServicePlan";
 import { useSaveEnlistment } from "@/hooks/useSavedEnlistment";
 import { usePlayer } from "@/hooks/usePlayer";
-import { isLockedRank } from "@/lib/dday";
+import { cohortMonthOf } from "@/lib/memories";
+import { ddayStatus, isLockedRank } from "@/lib/dday";
 import { RANKS, type Rank, rankOn } from "@/lib/service";
 
 /** 입대곡 tab: per-rank charts; ranks not reached yet stay locked. */
@@ -22,7 +23,10 @@ export default function Result() {
   const { search } = useLocation();
   const player = usePlayer();
   useSaveEnlistment(search, !!plan);
-  const current = useMemo(() => (plan ? rankOn(plan, new Date()) : null), [plan]);
+  const current = useMemo(
+    () => (plan ? rankOn(plan, new Date()) : null),
+    [plan],
+  );
   const locked = useMemo(
     () => (plan ? RANKS.filter((r) => isLockedRank(plan, r)) : []),
     [plan],
@@ -35,7 +39,14 @@ export default function Result() {
   return (
     <MobileShell>
       <AppHeader plan={plan} title="내 입대곡" />
-      <NowPlaying player={player} />
+      <NowPlaying
+        player={player}
+        author={{
+          cohortMonth: cohortMonthOf(plan.enlist),
+          branch: plan.branch,
+          isReserve: ddayStatus(plan).status === "done",
+        }}
+      />
 
       <ServiceSummary plan={plan} onEditDates={() => setEditing(true)} />
 
@@ -46,7 +57,11 @@ export default function Result() {
             {locked.includes(period.rank) ? (
               <LockedRank period={period} />
             ) : (
-              <RankChartPanel period={period} player={player} current={period.rank === current} />
+              <RankChartPanel
+                period={period}
+                player={player}
+                current={period.rank === current}
+              />
             )}
           </TabsContent>
         ))}

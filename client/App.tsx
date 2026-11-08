@@ -10,6 +10,7 @@ import Index from "./pages/Index";
 import Result from "./pages/Result";
 import Dday from "./pages/Dday";
 import Community from "./pages/Community";
+import Timeline from "./pages/Timeline";
 import Leave from "./pages/Leave";
 import NotFound from "./pages/NotFound";
 import Layout from "@/components/Layout";
@@ -26,6 +27,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/dday" element={<Dday />} />
           <Route path="/result" element={<Result />} />
+          <Route path="/timeline" element={<Timeline />} />
           <Route path="/community" element={<Community />} />
           <Route path="/leave" element={<Leave />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

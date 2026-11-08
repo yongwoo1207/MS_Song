@@ -3,8 +3,12 @@ import type { RankedChartSong } from "@shared/api";
 import type { Rank } from "@/lib/service";
 
 export interface PlayerQueue {
+  /** The listener's rank for these songs ("일병 시절") */
   rank: Rank;
   songs: RankedChartSong[];
+  /** 'YYYY-MM' when the queue is one chart month (timeline); memories
+   *  written from it file under that month. */
+  month?: string;
 }
 
 /** Queue + transport state for the in-page YouTube player. */
@@ -12,16 +16,22 @@ export function usePlayer() {
   const [queue, setQueue] = useState<PlayerQueue | null>(null);
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
+  /** Bumped when a song is picked by hand, so the player opens its memories. */
+  const [memoriesRequest, setMemoriesRequest] = useState(0);
 
   const current = queue?.songs[index] ?? null;
   const hasPrev = index > 0;
   const hasNext = !!queue && index < queue.songs.length - 1;
 
-  const play = useCallback((q: PlayerQueue, i = 0) => {
-    setQueue(q);
-    setIndex(i);
-    setPlaying(true);
-  }, []);
+  const play = useCallback(
+    (q: PlayerQueue, i = 0, opts: { openMemories?: boolean } = {}) => {
+      setQueue(q);
+      setIndex(i);
+      setPlaying(true);
+      if (opts.openMemories) setMemoriesRequest((n) => n + 1);
+    },
+    [],
+  );
 
   const stop = useCallback(() => {
     setQueue(null);
@@ -44,6 +54,7 @@ export function usePlayer() {
     current,
     playing,
     setPlaying,
+    memoriesRequest,
     hasPrev,
     hasNext,
     play,

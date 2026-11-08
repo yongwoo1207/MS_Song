@@ -18,7 +18,12 @@
     "start": "node dist/server/node-build.mjs",
     "test": "vitest --run",
     "format.fix": "prettier --write .",
-    "typecheck": "tsc"
+    "typecheck": "tsc && tsc -p worker",
+    "dev:api": "node -e \"require('fs').mkdirSync('dist/spa',{recursive:true})\" && wrangler d1 migrations apply DB --local && wrangler d1 execute DB --local --file db/events.sql && wrangler dev --port 8787",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "db:events": "wrangler d1 execute DB --local --file db/events.sql",
+    "db:events:remote": "wrangler d1 execute DB --remote --file db/events.sql",
+    "deploy": "npm run build:client && wrangler deploy"
   },
   "dependencies": {
     "dotenv": "^17.2.1",
@@ -27,6 +32,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261108.1",
     "@hookform/resolvers": "^5.2.1",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",
@@ -98,7 +104,8 @@
     "typescript": "^5.9.2",
     "vaul": "^1.1.2",
     "vite": "^7.1.2",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "wrangler": "^4.158.0"
   },
   "packageManager": "pnpm@10.14.0+sha512.ad27a79641b49c3e481a16a805baa71817a04bbe06a38d17e60e2eaee83f6a146c6a688125f5792e48dd5ba30e7da52a5cda4c3992b9ccf333f9ce223af84748"
 }

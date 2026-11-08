@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ms-song",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-01",
+  // The built site. Everything except /api/* is served straight from here;
+  // unknown paths fall back to index.html for the client-side router.
+  "assets": {
+    "directory": "./dist/spa",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ms-song-db",
+      "database_id": "09d9ceab-ede9-4f68-b941-b4f32ba5998e",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "observability": { "enabled": true }
+}

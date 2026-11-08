@@ -11,7 +11,6 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { useServicePlan } from "@/hooks/useServicePlan";
-import { COUNTRIES, HOME_COUNTRY } from "@/lib/country";
 import { dLabel, ddayStatus } from "@/lib/dday";
 import { RANKS } from "@/lib/service";
 import { cn } from "@/lib/utils";
@@ -20,16 +19,15 @@ const RANK_FILTERS = [...RANKS, "예비역"] as const;
 type RankFilter = (typeof RANK_FILTERS)[number];
 
 /**
- * 커뮤니티: posts filtered by country and rank. The screen and filters work;
+ * 커뮤니티: posts filtered by rank. The screen and filters work;
  * posts need a backend, so the list shows a "기능 추가 예정" notice for now.
  */
 export default function Community() {
   const { plan } = useServicePlan();
   const { search } = useLocation();
   const status = useMemo(() => (plan ? ddayStatus(plan) : null), [plan]);
-  const [country, setCountry] = useState<string | null>(null);
   const [rank, setRank] = useState<RankFilter | null>(null);
-  const [picker, setPicker] = useState<"country" | "rank" | null>(null);
+  const [picker, setPicker] = useState(false);
 
   if (!plan || !status) return <Navigate to="/" replace />;
 
@@ -39,19 +37,14 @@ export default function Community() {
       : status.status === "done"
         ? "예비역"
         : "입대 전";
-  const picked = COUNTRIES.find((c) => c.code === country);
-  const all = !country && !rank;
-  const note = all
-    ? "모든 나라, 모든 계급의 글이 최신순으로 보여요."
-    : `${picked ? picked.name : "모든 나라"} · ${rank ?? "모든 계급"}의 글만 보여요.`;
+  const note = rank
+    ? `${rank}일 때 남긴 글만 보여요.`
+    : "모든 계급의 글이 최신순으로 보여요.";
 
   return (
     <MobileShell>
       <header className="flex flex-col gap-px px-5 pb-2 pt-4">
-        <span className="font-mono text-[11px] text-ink-icon">
-          <span aria-hidden="true">{HOME_COUNTRY.flag} </span>
-          {me}
-        </span>
+        <span className="font-mono text-[11px] text-ink-icon">{me}</span>
         <h1 className="text-lg font-bold">커뮤니티</h1>
       </header>
 
@@ -60,19 +53,10 @@ export default function Community() {
         role="group"
         aria-label="글 필터"
       >
-        <Chip
-          on={all}
-          onClick={() => {
-            setCountry(null);
-            setRank(null);
-          }}
-        >
+        <Chip on={!rank} onClick={() => setRank(null)}>
           전체
         </Chip>
-        <Chip on={!!country} onClick={() => setPicker("country")} hasMenu>
-          {picked ? `${picked.flag} ${picked.name}` : "국가"}
-        </Chip>
-        <Chip on={!!rank} onClick={() => setPicker("rank")} hasMenu>
+        <Chip on={!!rank} onClick={() => setPicker(true)} hasMenu>
           {rank ?? "계급"}
         </Chip>
       </div>
@@ -89,8 +73,8 @@ export default function Community() {
           </span>
           <h2 className="text-base font-bold">커뮤니티를 준비하고 있어요</h2>
           <p className="text-[13.5px] leading-relaxed text-muted-foreground">
-            같은 시기를 지나는 사람들, 먼저 지나간 선배들의 글을 나라와 계급별로
-            모아 볼 수 있게 만들고 있어요.
+            같은 시기를 지나는 사람들, 먼저 지나간 선배들의 글을 계급별로 모아
+            볼 수 있게 만들고 있어요.
           </p>
           <ComingSoon />
         </section>
@@ -108,50 +92,25 @@ export default function Community() {
 
       <BottomNav />
 
-      <Drawer
-        open={picker !== null}
-        onOpenChange={(open) => !open && setPicker(null)}
-      >
+      <Drawer open={picker} onOpenChange={setPicker}>
         <DrawerContent className="mx-auto max-w-[430px] px-4 pb-8">
-          <DrawerTitle className="pt-4 text-base">
-            {picker === "country" ? "국가 선택" : "계급 선택"}
-          </DrawerTitle>
+          <DrawerTitle className="pt-4 text-base">계급 선택</DrawerTitle>
           <DrawerDescription className="pb-3 text-xs">
-            {picker === "country"
-              ? "지금은 대한민국 글만 있어요."
-              : "선택한 계급일 때 남긴 글만 보여요."}
+            선택한 계급일 때 남긴 글만 보여요.
           </DrawerDescription>
           <ul className="flex flex-col gap-1.5">
-            {picker === "country" &&
-              COUNTRIES.map((c) => (
-                <PickerRow
-                  key={c.code}
-                  on={country === c.code}
-                  onClick={() => {
-                    setCountry(country === c.code ? null : c.code);
-                    setPicker(null);
-                  }}
-                  extra={!c.available ? "준비 중" : undefined}
-                >
-                  <span aria-hidden="true" className="text-lg">
-                    {c.flag}
-                  </span>
-                  {c.name}
-                </PickerRow>
-              ))}
-            {picker === "rank" &&
-              RANK_FILTERS.map((r) => (
-                <PickerRow
-                  key={r}
-                  on={rank === r}
-                  onClick={() => {
-                    setRank(rank === r ? null : r);
-                    setPicker(null);
-                  }}
-                >
-                  {r}
-                </PickerRow>
-              ))}
+            {RANK_FILTERS.map((r) => (
+              <PickerRow
+                key={r}
+                on={rank === r}
+                onClick={() => {
+                  setRank(rank === r ? null : r);
+                  setPicker(false);
+                }}
+              >
+                {r}
+              </PickerRow>
+            ))}
           </ul>
         </DrawerContent>
       </Drawer>
@@ -198,12 +157,10 @@ function Chip({
 function PickerRow({
   on,
   onClick,
-  extra,
   children,
 }: {
   on: boolean;
   onClick: () => void;
-  extra?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -218,9 +175,6 @@ function PickerRow({
         )}
       >
         <span className="flex flex-1 items-center gap-2.5">{children}</span>
-        {extra && (
-          <span className="text-[11px] font-bold text-ink-icon">{extra}</span>
-        )}
         {on && (
           <Check
             className="size-[18px] text-primary"

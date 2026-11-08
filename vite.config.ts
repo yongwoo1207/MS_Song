@@ -1,6 +1,7 @@
-import { defineConfig, Plugin, searchForWorkspaceRoot} from "vite";
+import { defineConfig, Plugin, searchForWorkspaceRoot } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
+import type express from "express";
 import { createServer } from "./server";
 
 // https://vitejs.dev/config/
@@ -9,6 +10,11 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    // Posts API runs in the Cloudflare Worker (`npm run dev:api`, port 8787)
+    proxy: {
+      "/api/posts": "http://127.0.0.1:8787",
+      "/api/events": "http://127.0.0.1:8787",
+    },
     fs: {
       allow: [
         searchForWorkspaceRoot(process.cwd()),
@@ -35,8 +41,13 @@ function expressPlugin(): Plugin {
     configureServer(server) {
       const app = createServer();
 
-      // Add Express app as middleware to Vite dev server
-      server.middlewares.use(app);
+      // Add Express app as middleware to Vite dev server. /api/posts and
+      // /api/events belong to the Worker: skip them so the dev proxy gets them.
+      server.middlewares.use((req, res, next) =>
+        /^\/api\/(posts|events)(\/|\?|$)/.test(req.url ?? "")
+          ? next()
+          : app(req as express.Request, res as express.Response, next),
+      );
     },
   };
 }

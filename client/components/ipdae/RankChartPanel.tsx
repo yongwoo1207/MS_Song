@@ -16,7 +16,11 @@ interface RankChartPanelProps {
 }
 
 /** Period line, play-all actions and the merged chart for one rank. */
-export default function RankChartPanel({ period, player, current }: RankChartPanelProps) {
+export default function RankChartPanel({
+  period,
+  player,
+  current,
+}: RankChartPanelProps) {
   const { data, isLoading, isError } = useRankChart(period);
   const songs = data?.songs ?? [];
   const playable = songs.filter((s) => s.youtubeId);
@@ -26,7 +30,8 @@ export default function RankChartPanel({ period, player, current }: RankChartPan
     <div className="flex flex-col">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 pb-2 pt-3">
         <span className="font-mono text-xs text-muted-foreground">
-          {shortDot(period.start)} – {shortDot(period.end)} · {period.months}개월
+          {shortDot(period.start)} – {shortDot(period.end)} · {period.months}
+          개월
         </span>
         {current ? (
           <span className="rounded-md bg-accent px-1.5 py-[3px] text-[11px] font-bold text-primary">
@@ -80,8 +85,23 @@ export default function RankChartPanel({ period, player, current }: RankChartPan
               <SongRow
                 key={songKey(song)}
                 song={song}
-                active={queued && !!player.current && songKey(player.current) === songKey(song)}
-                onPlay={idx >= 0 ? () => player.play({ rank: period.rank, songs: playable }, idx) : undefined}
+                active={
+                  queued &&
+                  !!player.current &&
+                  songKey(player.current) === songKey(song)
+                }
+                onPlay={
+                  idx >= 0
+                    ? () =>
+                        player.play(
+                          { rank: period.rank, songs: playable },
+                          idx,
+                          {
+                            openMemories: true,
+                          },
+                        )
+                    : undefined
+                }
               />
             );
           })}

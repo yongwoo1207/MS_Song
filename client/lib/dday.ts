@@ -36,6 +36,10 @@ export interface DoneStatus {
 export interface NotYetStatus {
   status: "notYet";
   daysLeft: number; // 입대까지
+  /** 전역까지 남은 일수 */
+  dischargeDaysLeft: number;
+  /** 입대 · 진급 · 전역 예정일, 가까운 순 */
+  upcoming: Milestone[];
 }
 
 export type DdayStatus = ServingStatus | DoneStatus | NotYetStatus;
@@ -64,7 +68,16 @@ export function ddayStatus(plan: ServicePlan, now: Date = new Date()): DdayStatu
   const today = startOfDay(now);
 
   if (today < plan.enlist) {
-    return { status: "notYet", daysLeft: days(today, plan.enlist) };
+    return {
+      status: "notYet",
+      daysLeft: days(today, plan.enlist),
+      dischargeDaysLeft: days(today, plan.discharge),
+      upcoming: [
+        milestone("입대", plan.enlist, today),
+        ...plan.periods.slice(1).map((p) => milestone(`${p.rank} 진급`, p.start, today)),
+        milestone("전역", plan.discharge, today),
+      ],
+    };
   }
 
   if (today > plan.discharge) {

@@ -44,10 +44,17 @@ export function aggregateCharts(
       const top = song.rank === 1 ? [key] : [];
       if (prev) {
         prev.score += points;
+        if (song.rank < prev.bestRank) prev.bestMonth = key;
         prev.bestRank = Math.min(prev.bestRank, song.rank);
         prev.numberOneMonths.push(...top);
       } else {
-        bucket.set(id, { ...song, score: points, bestRank: song.rank, numberOneMonths: top });
+        bucket.set(id, {
+          ...song,
+          score: points,
+          bestRank: song.rank,
+          numberOneMonths: top,
+          bestMonth: key,
+        });
       }
     }
   }

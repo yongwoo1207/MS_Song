@@ -37,6 +37,7 @@ export interface RankedChartSong extends ChartSong {
   score: number; // summed rank points across the period
   bestRank: number; // best monthly rank inside the period
   numberOneMonths: string[]; // 'YYYY-M' months it was #1 inside the period
+  bestMonth: string; // 'YYYY-M' month of bestRank (earliest on ties)
 }
 
 export interface ChartRangeResult {
