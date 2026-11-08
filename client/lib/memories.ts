@@ -64,13 +64,15 @@ export interface MemoryStore {
   add(input: NewMemory): Promise<Memory>;
   addMonth(input: NewMonthMemory): Promise<Memory>;
   listLetters(slot: HobongSlot): Promise<Memory[]>;
+  /** My own 한마디 across every 계급·호봉. */
+  listMyLetters(): Promise<Memory[]>;
   addLetter(input: NewLetter): Promise<Memory>;
   remove(id: string): Promise<void>;
   toggleLike(id: string): Promise<{ liked: boolean; likes: number }>;
 }
 
 export const MEMORY_MAX_LENGTH = RECORD_MAX_LENGTH;
-export { LETTER_MAX_LENGTH } from "@shared/posts";
+export { LETTER_MAX_LENGTH, LETTERS_PER_SLOT } from "@shared/posts";
 
 /** fetch against the Worker API with the device token; throws its error. */
 export async function apiCall<T>(
@@ -147,6 +149,10 @@ export const apiMemoryStore: MemoryStore = {
       hobong: `${hobong}`,
     });
     const data = await call<{ posts: Memory[] }>(`?${q}`);
+    return data.posts;
+  },
+  async listMyLetters() {
+    const data = await call<{ posts: Memory[] }>("?kind=letter&mine=1");
     return data.posts;
   },
   async addLetter({ rank, hobong, body, author }) {

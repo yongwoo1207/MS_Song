@@ -1,13 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type HobongSlot, type NewLetter, memoryStore } from "@/lib/memories";
 
-/** 한마디 left for one 계급·호봉, plus add / delete / like. */
-export function useLetters(slot: HobongSlot | null) {
+/**
+ * 한마디 left for one 계급·호봉 ("mine": only my own, across all of them),
+ * plus add / delete / like.
+ */
+export function useLetters(slot: HobongSlot | "mine" | null) {
   const qc = useQueryClient();
-  const key = ["letters", slot?.rank, slot?.hobong];
+  const key =
+    slot === "mine" ? ["letters", "mine"] : ["letters", slot?.rank, slot?.hobong];
   const list = useQuery({
     queryKey: key,
-    queryFn: () => memoryStore.listLetters(slot!),
+    queryFn: () =>
+      slot === "mine" ? memoryStore.listMyLetters() : memoryStore.listLetters(slot!),
     enabled: !!slot,
     staleTime: 30_000,
     retry: 1,

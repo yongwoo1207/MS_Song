@@ -9,6 +9,8 @@ export const REPORT_REASONS = ["보안", "욕설·비방", "광고", "기타"] a
 
 export const RECORD_MAX_LENGTH = 300;
 export const LETTER_MAX_LENGTH = 200;
+/** 한마디 one person may leave at the same 계급·호봉 */
+export const LETTERS_PER_SLOT = 3;
 
 export type PostRank = (typeof POST_RANKS)[number];
 export type PostBranch = (typeof POST_BRANCHES)[number];

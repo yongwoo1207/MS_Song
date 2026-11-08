@@ -18,6 +18,13 @@ describe("한마디 by 계급·호봉", () => {
     );
   });
 
+  it("lists only my own letters for a 예비역", async () => {
+    const fetch = vi.fn(() => reply(200, { posts: [] }));
+    vi.stubGlobal("fetch", fetch);
+    await apiMemoryStore.listMyLetters();
+    expect(fetch.mock.calls[0]).toContain("/api/posts?kind=letter&mine=1");
+  });
+
   it("posts a letter with the slot and author", async () => {
     const fetch = vi.fn(() => reply(201, { post: { id: "1" } }));
     vi.stubGlobal("fetch", fetch);

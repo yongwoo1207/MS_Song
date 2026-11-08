@@ -7,6 +7,7 @@
  *                                    records written to those timeline
  *                                    months, by month then most liked
  *   GET    /api/posts?kind=letter&rank=상병&hobong=2
+ *   GET    /api/posts?kind=letter&mine=1   (my own 한마디)
  *                                    한마디 left for that 계급·호봉, most liked
  *   POST   /api/posts                write a record (NewSongRecord or
  *                                    NewMonthRecord) or a letter (NewLetter)
@@ -25,6 +26,7 @@ import {
   type ApiPost,
   DEVICE_HEADER,
   LETTER_MAX_LENGTH,
+  LETTERS_PER_SLOT,
   POST_BRANCHES,
   POST_RANKS,
   RECORD_MAX_LENGTH,
@@ -267,8 +269,24 @@ async function listMonthRecords(req: Request, env: Env, url: URL) {
   return json({ posts: results.map((r) => toApi(r, me)) });
 }
 
+/** The caller's own 한마디 across every 계급·호봉, newest first. */
+async function listMyLetters(req: Request, env: Env) {
+  const me = await authorOf(req);
+  if (!me) return json({ posts: [] });
+  const { results } = await env.DB.prepare(
+    `${SELECT_POST}
+     WHERE p.kind = 'letter' AND p.author_id = ?1 AND p.status = 'visible'
+     ORDER BY p.created_at DESC
+     LIMIT 50`,
+  )
+    .bind(me)
+    .all<PostRow>();
+  return json({ posts: results.map((r) => toApi(r, me)) });
+}
+
 /** 한마디 for one 계급·호봉, most liked then newest. */
 async function listLetters(req: Request, env: Env, url: URL) {
+  if (url.searchParams.get("mine") === "1") return listMyLetters(req, env);
   const rank = z.enum(POST_RANKS).safeParse(url.searchParams.get("rank"));
   const hobong = Number(url.searchParams.get("hobong"));
   if (!rank.success || !Number.isInteger(hobong) || hobong < 1 || hobong > 12) {
@@ -312,6 +330,20 @@ async function createLetter(env: Env, req: Request, raw: unknown) {
   const input = parsed.data;
   const me = await writer(req, env.DB);
   await checkLimits(env.DB, me);
+  // Reported (hidden) ones still count, so hiding doesn't free a slot.
+  const mine = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM posts
+     WHERE kind = 'letter' AND author_id = ? AND rank = ? AND hobong = ?
+       AND status <> 'deleted'`,
+  )
+    .bind(me, input.rank, input.hobong)
+    .first<{ n: number }>();
+  if ((mine?.n ?? 0) >= LETTERS_PER_SLOT) {
+    throw new HttpError(
+      409,
+      `${input.rank} ${input.hobong}호봉에는 ${LETTERS_PER_SLOT}개까지 남길 수 있어요`,
+    );
+  }
   const id = crypto.randomUUID();
   await env.DB.prepare(
     `INSERT INTO posts (id, kind, body, rank, hobong, author_id, cohort_month,

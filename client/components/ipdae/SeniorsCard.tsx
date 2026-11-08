@@ -1,10 +1,18 @@
-import { useMemo, useState } from "react";
-import { Heart, MessageCircle, PenLine, ShieldAlert, X } from "lucide-react";
+import { type ReactNode, useMemo, useState } from "react";
+import {
+  ChevronDown,
+  Heart,
+  MessageCircle,
+  PenLine,
+  ShieldAlert,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useLetters } from "@/hooks/useLetters";
 import {
   type HobongSlot,
   LETTER_MAX_LENGTH,
+  LETTERS_PER_SLOT,
   type Memory,
   type MemoryAuthor,
   cohortLabel,
@@ -31,7 +39,8 @@ function slotsOf(plan: ServicePlan): HobongSlot[] {
 /**
  * 한마디 by 계급·호봉. A 현역 sees what seniors left for the 호봉 they are
  * in now and writes for the next people at it. A 예비역 picks any 호봉 they
- * went through and writes for the 후임 at it.
+ * went through and writes for the 후임 at it, and sees only their own 한마디:
+ * the rest are for whoever stands at that 호봉 now.
  */
 export default function SeniorsCard({
   plan,
@@ -52,7 +61,7 @@ export default function SeniorsCard({
   const slot = serving ? now : picked;
 
   const { letters, isLoading, isError, refetch, add, remove, like } =
-    useLetters(slot);
+    useLetters(serving ? slot : "mine");
   const [expanded, setExpanded] = useState(false);
   const [writing, setWriting] = useState(false);
 
@@ -66,48 +75,14 @@ export default function SeniorsCard({
   const shown = expanded ? letters : letters.slice(0, PREVIEW);
   const onError = (err: Error) => toast(err.message);
 
-  return (
-    <section className="flex flex-col gap-2.5 rounded-[18px] border-2 border-primary bg-card px-4 pb-3 pt-3">
-      <h2>
-        <button
-          type="button"
-          onClick={() => setWriting((v) => !v)}
-          aria-expanded={writing}
-          aria-controls="letter-composer"
-          className="flex w-full items-start gap-2 text-left"
-        >
-          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="flex items-center gap-1.5 text-[13.5px] font-bold text-primary">
-              <MessageCircle
-                className="size-[15px]"
-                strokeWidth={2}
-                aria-hidden="true"
-              />
-              {serving ? `${label}에 섰던 선배들` : "후임들에게 한마디"}
-            </span>
-            <span className="text-xs font-normal leading-normal text-muted-foreground">
-              {serving
-                ? "지금 나와 같은 호봉일 때 선배들이 남긴 한마디예요."
-                : "남긴 한마디는 그 계급·호봉에 선 후임들에게 떠요."}
-            </span>
-          </span>
-          <span
-            aria-hidden="true"
-            className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-primary"
-          >
-            {writing ? (
-              <X className="size-4" strokeWidth={2.2} />
-            ) : (
-              <PenLine className="size-3.5" strokeWidth={2.2} />
-            )}
-          </span>
-          <span className="sr-only">
-            {writing ? "쓰기 닫기" : "한마디 쓰기"}
-          </span>
-        </button>
-      </h2>
+  // Server enforces this too; the list may miss some beyond its first 50.
+  const used = letters.filter(
+    (m) => m.mine && m.rank === slot.rank && m.hobong === slot.hobong,
+  ).length;
 
-      {!serving && writing && (
+  const composer = (
+    <>
+      {!serving && (
         <HobongPicker
           slots={slots}
           value={picked}
@@ -117,11 +92,19 @@ export default function SeniorsCard({
           }}
         />
       )}
-
-      {writing && (
+      {used >= LETTERS_PER_SLOT ? (
+        <p
+          id="letter-composer"
+          className="rounded-xl bg-muted px-3.5 py-3 text-[13px] leading-relaxed text-muted-foreground"
+        >
+          {label}에는 {LETTERS_PER_SLOT}개까지 남길 수 있어요. 남긴 글을 지우면
+          다시 쓸 수 있어요.
+        </p>
+      ) : (
         <LetterComposer
           key={label}
           label={label}
+          used={used}
           serving={serving}
           author={author}
           saving={add.isPending}
@@ -141,35 +124,45 @@ export default function SeniorsCard({
           }
         />
       )}
+    </>
+  );
 
-      {isLoading ? (
-        <p className="py-3 text-center text-[13px] text-muted-foreground">
-          불러오는 중…
-        </p>
-      ) : isError ? (
-        <div className="flex items-center justify-between gap-2 rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-muted-foreground">
-          한마디를 불러오지 못했어요.
-          <button
-            type="button"
-            onClick={() => refetch()}
-            className="h-8 rounded-lg border bg-card px-3 text-xs font-bold text-primary"
-          >
-            다시 시도
-          </button>
-        </div>
-      ) : letters.length === 0 ? null : (
-        <ul className="flex flex-col" aria-label={`${label}에 남겨진 한마디`}>
-          {shown.map((m) => (
-            <LetterRow
-              key={m.id}
-              letter={m}
-              onLike={() => like.mutate(m.id, { onError })}
-              onDelete={() => remove.mutate(m.id, { onError })}
-            />
-          ))}
-        </ul>
-      )}
-
+  const list = isLoading ? (
+    <p className="py-3 text-center text-[13px] text-muted-foreground">
+      불러오는 중…
+    </p>
+  ) : isError ? (
+    <div className="flex items-center justify-between gap-2 rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-muted-foreground">
+      한마디를 불러오지 못했어요.
+      <button
+        type="button"
+        onClick={() => refetch()}
+        className="h-8 rounded-lg border bg-card px-3 text-xs font-bold text-primary"
+      >
+        다시 시도
+      </button>
+    </div>
+  ) : letters.length === 0 ? null : (
+    <>
+      <ul
+        className="flex flex-col"
+        aria-label={serving ? `${label}에 남겨진 한마디` : "내가 남긴 한마디"}
+      >
+        {!serving && (
+          <li className="pb-1.5 text-xs font-bold text-muted-foreground">
+            내가 남긴 한마디
+          </li>
+        )}
+        {shown.map((m) => (
+          <LetterRow
+            key={m.id}
+            letter={m}
+            showSlot={!serving}
+            onLike={() => like.mutate(m.id, { onError })}
+            onDelete={() => remove.mutate(m.id, { onError })}
+          />
+        ))}
+      </ul>
       {letters.length > PREVIEW && (
         <button
           type="button"
@@ -180,7 +173,109 @@ export default function SeniorsCard({
           {expanded ? "접기" : `한마디 ${letters.length}개 모두 보기`}
         </button>
       )}
-    </section>
+    </>
+  );
+
+  if (!serving) {
+    return (
+      <section className={CARD}>
+        <WriteToggle
+          open={writing}
+          onToggle={() => setWriting((v) => !v)}
+          title="후임들에게 한마디"
+          sub="남긴 한마디는 그 계급·호봉에 선 후임들에게만 보여요."
+        />
+        {writing && composer}
+        {list}
+      </section>
+    );
+  }
+
+  // 현역: reading what seniors left and writing for the next ones are
+  // separate cards. The seniors card hides while there is nothing to read.
+  return (
+    <>
+      {(isLoading || isError || letters.length > 0) && (
+        <section className={CARD}>
+          <h2 className="flex flex-col gap-0.5">
+            <span className="flex items-center gap-1.5 text-[13.5px] font-bold text-primary">
+              <MessageCircle
+                className="size-[15px]"
+                strokeWidth={2}
+                aria-hidden="true"
+              />
+              {label}에 섰던 선배들
+            </span>
+            <span className="text-xs font-normal leading-normal text-muted-foreground">
+              지금 나와 같은 호봉일 때 선배들이 남긴 한마디예요.
+            </span>
+          </h2>
+          {list}
+        </section>
+      )}
+      <section className="flex flex-col gap-2.5 rounded-[18px] border bg-card px-4 pb-3 pt-3">
+        <WriteToggle
+          open={writing}
+          onToggle={() => setWriting((v) => !v)}
+          title={`다음 ${label}에게 한마디 남기기`}
+          sub={`다음에 ${label}이 될 후임들에게 보여요.`}
+        />
+        {writing && composer}
+      </section>
+    </>
+  );
+}
+
+const CARD =
+  "flex flex-col gap-2.5 rounded-[18px] border-2 border-primary bg-card px-4 pb-3 pt-3";
+
+/** Card header that opens and closes the composer under it. */
+function WriteToggle({
+  open,
+  onToggle,
+  title,
+  sub,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  title: ReactNode;
+  sub: ReactNode;
+}) {
+  return (
+    <h2>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls="letter-composer"
+        className="flex w-full items-center gap-2 text-left"
+      >
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="flex items-center gap-1.5 text-[13.5px] font-bold text-primary">
+            <PenLine
+              className="size-[15px]"
+              strokeWidth={2}
+              aria-hidden="true"
+            />
+            {title}
+          </span>
+          <span className="text-xs font-normal leading-normal text-muted-foreground">
+            {sub}
+          </span>
+        </span>
+        <span
+          aria-hidden="true"
+          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-primary"
+        >
+          {open ? (
+            <X className="size-4" strokeWidth={2.2} />
+          ) : (
+            <ChevronDown className="size-4" strokeWidth={2.2} />
+          )}
+        </span>
+        <span className="sr-only">{open ? "쓰기 닫기" : "쓰기 열기"}</span>
+      </button>
+    </h2>
   );
 }
 
@@ -239,21 +334,30 @@ function HobongPicker({
 
 function LetterRow({
   letter: m,
+  showSlot,
   onLike,
   onDelete,
 }: {
   letter: Memory;
+  /** Tag with the 계급·호봉 it was left for (my own list) instead of the author. */
+  showSlot?: boolean;
   onLike: () => void;
   onDelete: () => void;
 }) {
   return (
     <li className="flex flex-col gap-1 border-t border-muted py-2.5 first:border-t-0 first:pt-0.5">
       <div className="flex items-center gap-1.5 text-[11px] text-ink-icon">
-        <span>
-          {cohortLabel(m.cohortMonth)} · {m.branch} ·{" "}
-          {m.isReserve ? "예비역" : "현역"}
-          {m.mine ? " · 내 글" : ""}
-        </span>
+        {showSlot ? (
+          <span className="font-bold text-primary">
+            {m.rank} {m.hobong}호봉 후임에게
+          </span>
+        ) : (
+          <span>
+            {cohortLabel(m.cohortMonth)} · {m.branch} ·{" "}
+            {m.isReserve ? "예비역" : "현역"}
+            {m.mine ? " · 내 글" : ""}
+          </span>
+        )}
         <span className="flex-1" />
         <span>{timeAgo(m.createdAt)}</span>
       </div>
@@ -295,6 +399,7 @@ function LetterRow({
 
 function LetterComposer({
   label,
+  used,
   serving,
   author,
   saving,
@@ -302,6 +407,8 @@ function LetterComposer({
   onSubmit,
 }: {
   label: string;
+  /** How many I already left at this 계급·호봉 */
+  used: number;
   serving: boolean;
   author: MemoryAuthor;
   saving: boolean;
@@ -326,9 +433,14 @@ function LetterComposer({
       onSubmit={submit}
       className="flex flex-col gap-1.5 rounded-xl bg-background px-3 pb-2.5 pt-2.5"
     >
-      <label htmlFor="letter-text" className="text-[12.5px] font-bold">
-        {serving ? `다음 ${label}에게` : `${label} 후임에게`}
-      </label>
+      <div className="flex items-baseline justify-between gap-2">
+        <label htmlFor="letter-text" className="text-[12.5px] font-bold">
+          {label} 후임에게
+        </label>
+        <span className="shrink-0 text-[11px] text-ink-icon">
+          {used}/{LETTERS_PER_SLOT}개 남김
+        </span>
+      </div>
       <p className="text-xs leading-normal text-muted-foreground">
         남기면 {label}이 된 후임들에게 따뜻한 메시지로 전해질 거예요.
       </p>
