@@ -27,27 +27,4 @@ describe("timeline months", () => {
       "/api/events?from=2021-10&to=2023-04",
     );
   });
-
-  it("writes a record straight to a month, with no song", async () => {
-    const fetch = vi.fn(() => reply(201, { post: { id: "9" } }));
-    vi.stubGlobal("fetch", fetch);
-    await apiMemoryStore.addMonth({
-      aboutMonth: "2020-02",
-      body: "휴가 하루 전",
-      rank: "상병",
-      hobong: 3,
-      author: { cohortMonth: "2019-05", branch: "육군", isReserve: true },
-    });
-    const init = (fetch.mock.calls[0] as unknown as [string, RequestInit])[1];
-    expect(JSON.parse(init.body as string)).toEqual({
-      kind: "record",
-      aboutMonth: "2020-02",
-      body: "휴가 하루 전",
-      rank: "상병",
-      hobong: 3,
-      cohortMonth: "2019-05",
-      branch: "육군",
-      isReserve: true,
-    });
-  });
 });

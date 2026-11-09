@@ -33,8 +33,18 @@ export default function MemoriesPanel({
   author,
   onClose,
 }: MemoriesPanelProps) {
-  const { memories, isLoading, isError, refetch, add, remove, like } =
-    useMemories(song.key);
+  const {
+    memories,
+    isLoading,
+    isError,
+    refetch,
+    hasMore,
+    loadingMore,
+    loadMore,
+    add,
+    remove,
+    like,
+  } = useMemories(song.key);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -143,6 +153,20 @@ export default function MemoriesPanel({
                 }
               />
             ))}
+            {hasMore && (
+              <li>
+                <button
+                  type="button"
+                  onClick={() =>
+                    loadMore().catch(() => toast("더 불러오지 못했어요"))
+                  }
+                  disabled={loadingMore}
+                  className="h-10 w-full rounded-xl border bg-card text-[13px] font-bold text-primary disabled:opacity-60"
+                >
+                  {loadingMore ? "불러오는 중…" : "더 보기"}
+                </button>
+              </li>
+            )}
           </ul>
         )}
       </div>

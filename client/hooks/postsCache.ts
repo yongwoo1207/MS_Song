@@ -4,9 +4,11 @@ import type { QueryClient } from "@tanstack/react-query";
 const POST_QUERIES = [
   "memories",
   "timeline",
-  "letters",
   "song-counts",
   "my-posts",
+  "song-feed",
+  "talks",
+  "talk",
 ] as const;
 
 /** Refetch them all after writing, deleting or liking a post. */

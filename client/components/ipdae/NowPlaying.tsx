@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
-import { ChevronRight, MessageCircle, X } from "lucide-react";
+import { ChevronRight, Heart, MessageCircle, X } from "lucide-react";
 import { toast } from "sonner";
 import { songKey } from "@shared/api";
 import type { Player } from "@/hooks/usePlayer";
 import { type MemoryAuthor, monthParam } from "@/lib/memories";
-import { useMemories } from "@/hooks/useMemories";
+import {
+  useSongCounts,
+  useSongLikes,
+  useToggleSongLike,
+} from "@/hooks/useMyPosts";
+import { cn } from "@/lib/utils";
 import MemoriesPanel from "./MemoriesPanel";
 import YouTubeFrame from "./YouTubeFrame";
 import { NextIcon, PauseIcon, PlayIcon, PrevIcon } from "./icons";
@@ -23,7 +28,13 @@ export default function NowPlaying({
 }) {
   const { current: song, queue } = player;
   const key = song ? songKey(song) : undefined;
-  const { memories } = useMemories(key);
+  // Total under the song (the panel itself loads 20 at a time)
+  const counts = useSongCounts();
+  const total = key ? (counts?.[key] ?? 0) : 0;
+  const { likes, liked } = useSongLikes();
+  const toggleLike = useToggleSongLike();
+  const hearted = !!key && liked.has(key);
+  const hearts = key ? (likes[key] ?? 0) : 0;
   const [memoriesOpen, setMemoriesOpen] = useState(false);
   // Tapping a song in the chart opens its memories under the video.
   useEffect(() => {
@@ -101,29 +112,50 @@ export default function NowPlaying({
           <X className="size-5" strokeWidth={2} />
         </button>
       </div>
-      <button
-        type="button"
-        onClick={() => setMemoriesOpen(true)}
-        aria-haspopup="dialog"
-        className="flex h-10 items-center gap-1.5 border-t border-muted px-4 text-left text-[13px]"
-      >
-        <MessageCircle
-          className="size-4 text-primary"
-          strokeWidth={2}
-          aria-hidden="true"
-        />
-        <span className="font-bold">이 노래의 추억</span>
-        <span className="font-mono text-xs text-ink-icon">
-          {memories.length}
-        </span>
-        <span className="flex-1" />
-        <span className="text-xs font-bold text-primary">나도 남기기</span>
-        <ChevronRight
-          className="size-4 text-primary"
-          strokeWidth={2}
-          aria-hidden="true"
-        />
-      </button>
+      <div className="flex h-10 items-stretch border-t border-muted">
+        <button
+          type="button"
+          onClick={() =>
+            toggleLike.mutate(key, {
+              onError: (err) => toast(err.message),
+            })
+          }
+          aria-pressed={hearted}
+          aria-label={`이 노래 좋아요 ${hearts}`}
+          className={cn(
+            "flex shrink-0 items-center gap-1 border-r border-muted pl-4 pr-3 text-[13px] font-bold",
+            hearted ? "text-primary" : "text-muted-foreground",
+          )}
+        >
+          <Heart
+            className={cn("size-4", hearted && "fill-current")}
+            strokeWidth={2}
+            aria-hidden="true"
+          />
+          <span className="font-mono text-xs">{hearts}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMemoriesOpen(true)}
+          aria-haspopup="dialog"
+          className="flex min-w-0 flex-1 items-center gap-1.5 pl-3 pr-4 text-left text-[13px]"
+        >
+          <MessageCircle
+            className="size-4 text-primary"
+            strokeWidth={2}
+            aria-hidden="true"
+          />
+          <span className="font-bold">이 노래의 추억</span>
+          <span className="font-mono text-xs text-ink-icon">{total}</span>
+          <span className="flex-1" />
+          <span className="text-xs font-bold text-primary">나도 남기기</span>
+          <ChevronRight
+            className="size-4 text-primary"
+            strokeWidth={2}
+            aria-hidden="true"
+          />
+        </button>
+      </div>
       {memoriesOpen && (
         <MemoriesPanel
           song={{ key, title: song.title, artist: song.artist }}

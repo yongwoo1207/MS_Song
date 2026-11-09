@@ -1,6 +1,11 @@
 import { ExternalLink } from "lucide-react";
 import { useRankChart } from "@/hooks/useRankChart";
-import { useSongCounts } from "@/hooks/useMyPosts";
+import { toast } from "sonner";
+import {
+  useSongCounts,
+  useSongLikes,
+  useToggleSongLike,
+} from "@/hooks/useMyPosts";
 import type { Player } from "@/hooks/usePlayer";
 import { shortDot, youtubeQueue } from "@/lib/format";
 import type { RankPeriod } from "@/lib/service";
@@ -27,6 +32,8 @@ export default function RankChartPanel({
   const playable = songs.filter((s) => s.youtubeId);
   const queued = player.queue?.rank === period.rank;
   const counts = useSongCounts();
+  const { likes, liked } = useSongLikes();
+  const toggleLike = useToggleSongLike();
 
   return (
     <div className="flex flex-col">
@@ -88,6 +95,13 @@ export default function RankChartPanel({
                 key={songKey(song)}
                 song={song}
                 memories={counts?.[songKey(song)]}
+                likes={likes[songKey(song)]}
+                liked={liked.has(songKey(song))}
+                onLike={() =>
+                  toggleLike.mutate(songKey(song), {
+                    onError: (err) => toast(err.message),
+                  })
+                }
                 active={
                   queued &&
                   !!player.current &&

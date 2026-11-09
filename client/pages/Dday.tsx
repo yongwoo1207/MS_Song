@@ -4,7 +4,7 @@ import MobileShell from "@/components/ipdae/MobileShell";
 import AppHeader from "@/components/ipdae/AppHeader";
 import BottomNav from "@/components/ipdae/BottomNav";
 import DdayCard from "@/components/ipdae/DdayCard";
-import SeniorsCard from "@/components/ipdae/SeniorsCard";
+import TalkLinkCard from "@/components/ipdae/TalkLinkCard";
 import MilestoneList from "@/components/ipdae/MilestoneList";
 import SongsShortcut from "@/components/ipdae/SongsShortcut";
 import DoneCard from "@/components/ipdae/DoneCard";
@@ -56,7 +56,7 @@ export default function Dday() {
               status={status}
               onSaveImage={() => setSnapshot(true)}
             />
-            <SeniorsCard plan={plan} mode="serving" />
+            <TalkLinkCard reserve={false} />
             <MilestoneList
               title="다가오는 날"
               items={status.upcoming}
@@ -82,7 +82,7 @@ export default function Dday() {
               status={status}
               onSaveImage={() => setSnapshot(true)}
             />
-            <SeniorsCard plan={plan} mode="reserve" />
+            <TalkLinkCard reserve />
             <MilestoneList
               title="다가오는 기념일"
               items={status.anniversaries}
@@ -113,8 +113,8 @@ export default function Dday() {
               }
             />
             <p className="rounded-2xl border bg-card px-4 py-3.5 text-[13px] leading-relaxed text-muted-foreground">
-              입대하면 계급마다 그 시절 차트가 쌓이고, 같은 호봉 선배들이 남긴
-              한마디를 볼 수 있어요.
+              입대하면 계급마다 그 시절 차트가 쌓이고, 커뮤니티에서 예비역
+              선배들과 이야기할 수 있어요.
             </p>
           </>
         )}

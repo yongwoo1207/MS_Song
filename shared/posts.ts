@@ -1,6 +1,10 @@
 /**
  * Types shared by the browser and the Cloudflare Worker for user posts
- * (see migrations/). A record hangs on a song, or only on a timeline month.
+ * (see migrations/):
+ *   record = 노래 추억, a memory under a song
+ *   post   = 커뮤니티 글, on no song
+ *   talk   = 선후임 소통 글 between 현역 and 예비역
+ *   reply  = 답글 under a talk
  */
 
 export const POST_RANKS = ["이병", "일병", "상병", "병장"] as const;
@@ -8,9 +12,9 @@ export const POST_BRANCHES = ["육군", "해군", "공군", "해병대"] as cons
 export const REPORT_REASONS = ["보안", "욕설·비방", "광고", "기타"] as const;
 
 export const RECORD_MAX_LENGTH = 300;
-export const LETTER_MAX_LENGTH = 200;
-/** 한마디 one person may leave at the same 계급·호봉 */
-export const LETTERS_PER_SLOT = 3;
+export const TALK_MAX_LENGTH = 500;
+export const REPLY_MAX_LENGTH = 300;
+export const COMMUNITY_MAX_LENGTH = 500;
 
 export type PostRank = (typeof POST_RANKS)[number];
 export type PostBranch = (typeof POST_BRANCHES)[number];
@@ -33,52 +37,52 @@ export interface ApiEvent {
   sourceUrl: string | null;
 }
 
-/** Body of POST /api/posts for a memory under a song. */
-export interface NewSongRecord {
-  kind: "record";
-  song: SongRef;
-  body: string;
-  rank: PostRank; // rank whose chart the author found the song in
-  aboutMonth: string; // 'YYYY-MM' chart month the memory files under
+interface AuthorFields {
   cohortMonth: string; // 'YYYY-MM'
   branch: PostBranch;
   isReserve: boolean;
 }
 
-/** Body of POST /api/posts for a record written to a timeline month. */
-export interface NewMonthRecord {
+/** Body of POST /api/posts for a memory under a song. */
+export interface NewSongRecord extends AuthorFields {
   kind: "record";
-  aboutMonth: string; // 'YYYY-MM'
+  song: SongRef;
   body: string;
-  rank: PostRank; // the author's rank that month
-  hobong?: number; // and 호봉
-  cohortMonth: string;
-  branch: PostBranch;
-  isReserve: boolean;
+  rank: PostRank; // rank whose chart the author found the song in
+  aboutMonth: string; // 'YYYY-MM' chart month the memory files under
+}
+
+/** Body of POST /api/posts for a 커뮤니티 글 (no song). `rank`: which 시절. */
+export interface NewCommunityPost extends AuthorFields {
+  kind: "post";
+  body: string;
+  rank: PostRank;
 }
 
 /**
- * Body of POST /api/posts for a 한마디: shown to whoever is at the same
- * 계급·호봉 later. 현역 write at their current 호봉, 예비역 pick one.
+ * Body of POST /api/posts for a 선후임 소통 글: 현역 write to 예비역 선배,
+ * 예비역 to 현역 후임, and anyone replies under it.
  */
-export interface NewLetter {
-  kind: "letter";
+export interface NewTalk extends AuthorFields {
+  kind: "talk";
   body: string;
-  rank: PostRank;
-  hobong: number;
-  cohortMonth: string;
-  branch: PostBranch;
-  isReserve: boolean;
+  rank: PostRank | null; // the writer's rank now (null for 예비역)
+}
+
+/** Body of POST /api/posts for a reply under a 소통 글. */
+export interface NewReply extends AuthorFields {
+  kind: "reply";
+  parentId: string;
+  body: string;
 }
 
 /** A post as the API returns it. The author is never exposed. */
 export interface ApiPost {
   id: string;
-  kind: "record" | "letter" | "talk" | "reply";
+  kind: "record" | "post" | "talk" | "reply";
   body: string;
   song: SongRef | null;
   rank: PostRank | null;
-  hobong: number | null;
   aboutMonth: string | null; // 'YYYY-MM'
   cohortMonth: string;
   branch: PostBranch;
@@ -88,8 +92,19 @@ export interface ApiPost {
   createdAt: string; // ISO
   likedByMe: boolean;
   mine: boolean;
+  /** Reply: the talk it answers. */
+  parentId?: string | null;
+  /** Reply written by whoever wrote the talk. */
+  byAsker?: boolean;
   /** Hidden after reports. Only ever true in my own list. */
   hidden?: boolean;
+}
+
+/** GET /api/song-counts */
+export interface ApiSongStats {
+  counts: Record<string, number>; // memories per song key
+  likes: Record<string, number>; // hearts per song key
+  liked: string[]; // song keys I hearted
 }
 
 /** Activity on one of my posts, as GET /api/notifications returns it. */
@@ -104,8 +119,8 @@ export interface ApiNotification {
     body: string;
     songTitle: string | null;
     rank: PostRank | null;
-    hobong: number | null;
     aboutMonth: string | null;
+    parentId: string | null;
   };
 }
 

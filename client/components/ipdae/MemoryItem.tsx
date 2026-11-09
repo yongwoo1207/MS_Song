@@ -1,23 +1,41 @@
-import { Heart } from "lucide-react";
+import { Heart, Music } from "lucide-react";
 import { type Memory, cohortLabel, timeAgo } from "@/lib/memories";
 import { cn } from "@/lib/utils";
 
-/** One record card: who (군번 · 계급), when, body, like and delete. */
+/**
+ * One record card: who (군번 · 계급), when, body, like and delete.
+ * `showSong` adds the song it hangs on (the 커뮤니티 feed mixes songs).
+ */
 export default function MemoryItem({
   memory: m,
+  showSong,
   onLike,
   onDelete,
 }: {
   memory: Memory;
+  showSong?: boolean;
   onLike: () => void;
   onDelete: () => void;
 }) {
   return (
     <li className="flex flex-col gap-1.5 rounded-2xl border bg-card px-3.5 pb-2 pt-3">
+      {showSong && m.song && (
+        <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
+          <Music
+            className="size-3.5 shrink-0 text-primary"
+            strokeWidth={2.2}
+            aria-hidden="true"
+          />
+          <span className="truncate font-bold">{m.song.title}</span>
+          <span className="shrink-0 text-muted-foreground">·</span>
+          <span className="truncate text-muted-foreground">
+            {m.song.artist}
+          </span>
+        </div>
+      )}
       <div className="flex items-center gap-1.5">
         <span className="whitespace-nowrap rounded-md bg-accent px-1.5 py-[3px] text-[11px] font-bold text-primary">
-          {cohortLabel(m.cohortMonth)} · {m.rank}
-          {m.hobong ? ` ${m.hobong}호봉` : ""} 시절
+          {cohortLabel(m.cohortMonth)} · {m.rank} 시절
           {m.isReserve ? " · 예비역" : ""}
         </span>
         {m.mine && (

@@ -17,14 +17,22 @@ const reply = (status: number, body?: unknown) =>
 describe("apiMemoryStore", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("lists a song's posts with the device header", async () => {
-    const fetch = vi.fn(() => reply(200, { posts: [{ id: "1" }] }));
+  it("lists a song's posts a page at a time, with the device header", async () => {
+    const fetch = vi.fn(() =>
+      reply(200, { posts: [{ id: "1" }], next: "2026-11-01T00:00:00.000Z|1" }),
+    );
     vi.stubGlobal("fetch", fetch);
-    const posts = await apiMemoryStore.list("IVE (아이브)|LOVE DIVE");
-    expect(posts).toEqual([{ id: "1" }]);
+    const page = await apiMemoryStore.list("IVE (아이브)|LOVE DIVE");
+    expect(page).toEqual({
+      posts: [{ id: "1" }],
+      next: "2026-11-01T00:00:00.000Z|1",
+    });
     const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe(
-      `/api/posts?song=${encodeURIComponent("IVE (아이브)|LOVE DIVE")}`,
+    const song = new URLSearchParams({ song: "IVE (아이브)|LOVE DIVE" });
+    expect(url).toBe(`/api/posts?${song}&limit=20`);
+    await apiMemoryStore.list("a|b", page.next!);
+    expect((fetch.mock.calls[1] as unknown as [string])[0]).toBe(
+      `/api/posts?song=a%7Cb&limit=20&before=${encodeURIComponent(page.next!)}`,
     );
     expect((init.headers as Record<string, string>)["X-Device-Token"]).toBe(
       "test-device-token-1234",

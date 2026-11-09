@@ -2,25 +2,30 @@
  * Cloudflare Worker: serves the built site (dist/spa) and the posts API on
  * D1. Only /api/* reaches this code (see run_worker_first in wrangler.jsonc).
  *
- *   GET    /api/posts?song=<key>     memories under a song, newest first
- *   GET    /api/posts?from=YYYY-MM&to=YYYY-MM[&cohort=YYYY-MM][&songs=1]
- *                                    records written to those timeline
- *                                    months (songs=1: song memories filed
- *                                    under them too), by month, most liked
- *   GET    /api/posts?kind=letter&rank=상병&hobong=2
- *   GET    /api/posts?kind=letter&mine=1   (my own 한마디)
- *                                    한마디 left for that 계급·호봉, most liked
- *   POST   /api/posts                write a record (NewSongRecord or
- *                                    NewMonthRecord) or a letter (NewLetter)
+ *   GET    /api/posts?song=<key>[&limit=20][&before=<cursor>]
+ *                                    memories under a song, newest first,
+ *                                    a page at a time ({ posts, next })
+ *   GET    /api/posts?from=YYYY-MM&to=YYYY-MM[&cohort=YYYY-MM]
+ *                                    song memories filed under those
+ *                                    timeline months, by month, most liked
+ *   GET    /api/posts?feed=community[&rank=][&reserve=1][&before=<cursor>]
+ *                                    커뮤니티 글 and song memories, newest first
+ *   GET    /api/posts?kind=talk[&reserve=0|1][&before=<cursor>]
+ *                                    선후임 소통 글, newest first
+ *   GET    /api/posts/:id            a 소통 글 with its replies
+ *   POST   /api/posts                write a song memory (NewSongRecord),
+ *                                    a 커뮤니티 글 (NewCommunityPost),
+ *                                    a 소통 글 (NewTalk) or a reply (NewReply)
  *   DELETE /api/posts/:id            delete your own post
  *   POST   /api/posts/:id/like       like / unlike
  *   POST   /api/posts/:id/report     report ({ reason })
  *   GET    /api/events?from=YYYY-MM&to=YYYY-MM
  *                                    major issues (사건) of those months
- *   GET    /api/song-counts          { counts: { songKey: memories } }
+ *   GET    /api/song-counts          ApiSongStats: memories and hearts per song
+ *   POST   /api/songs/like           heart / unheart a song ({ key })
  *   GET    /api/me/posts             everything I wrote (hidden ones too)
  *   GET    /api/notifications[?count=1]
- *                                    likes on my posts, grouped per post
+ *                                    likes and replies on my posts, per post
  *   POST   /api/notifications/read   mark all read
  *
  * Callers are anonymous: the browser sends a random device token and only
@@ -31,13 +36,15 @@ import {
   type ApiEvent,
   type ApiNotification,
   type ApiPost,
+  type ApiSongStats,
   DEVICE_HEADER,
-  LETTER_MAX_LENGTH,
-  LETTERS_PER_SLOT,
   POST_BRANCHES,
   POST_RANKS,
   RECORD_MAX_LENGTH,
+  REPLY_MAX_LENGTH,
+  COMMUNITY_MAX_LENGTH,
   REPORT_REASONS,
+  TALK_MAX_LENGTH,
 } from "../shared/posts";
 
 interface Env {
@@ -54,6 +61,7 @@ const MAX_BODY_BYTES = 8_192;
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const TIMELINE_LIMIT = 1000;
+const PAGE = 20; // posts per page in paged lists
 
 const RecordBase = z.object({
   kind: z.literal("record"),
@@ -74,22 +82,36 @@ const NewSongRecord = RecordBase.extend({
   }),
   aboutMonth: z.string().regex(MONTH),
 });
-const NewMonthRecord = RecordBase.extend({
-  aboutMonth: z.string().regex(MONTH),
-  hobong: z.number().int().min(1).max(12).optional(),
-});
-const NewLetter = z.object({
-  kind: z.literal("letter"),
-  body: z
+const text = (max: number) =>
+  z
     .string()
     .transform((s) => s.trim())
-    .pipe(z.string().min(1, "내용을 입력해주세요").max(LETTER_MAX_LENGTH)),
-  rank: z.enum(POST_RANKS),
-  hobong: z.number().int().min(1).max(12),
+    .pipe(z.string().min(1, "내용을 입력해주세요").max(max));
+const Author = {
   cohortMonth: z.string().regex(MONTH),
   branch: z.enum(POST_BRANCHES),
   isReserve: z.boolean(),
+};
+/** A 커뮤니티 글: no song, filed under the rank whose 시절 it is about. */
+const NewCommunityPost = z.object({
+  kind: z.literal("post"),
+  body: text(COMMUNITY_MAX_LENGTH),
+  rank: z.enum(POST_RANKS),
+  ...Author,
 });
+const NewTalk = z.object({
+  kind: z.literal("talk"),
+  body: text(TALK_MAX_LENGTH),
+  rank: z.enum(POST_RANKS).nullable(),
+  ...Author,
+});
+const NewReply = z.object({
+  kind: z.literal("reply"),
+  parentId: z.string().min(1).max(64),
+  body: text(REPLY_MAX_LENGTH),
+  ...Author,
+});
+const SongLike = z.object({ key: z.string().min(3).max(300) });
 const Report = z.object({ reason: z.enum(REPORT_REASONS) });
 
 class HttpError extends Error {
@@ -160,8 +182,8 @@ interface PostRow {
   song_title: string | null;
   song_artist: string | null;
   rank: ApiPost["rank"];
-  hobong: number | null;
   about_month: string | null;
+  parent_id: string | null;
   cohort_month: string;
   branch: ApiPost["branch"];
   is_reserve: number;
@@ -173,7 +195,8 @@ interface PostRow {
   liked_by_me: number;
 }
 
-const toApi = (r: PostRow, me: string | null): ApiPost => ({
+/** `asker`: author of the talk when listing its replies. */
+const toApi = (r: PostRow, me: string | null, asker?: string): ApiPost => ({
   id: r.id,
   kind: r.kind,
   body: r.body,
@@ -181,7 +204,6 @@ const toApi = (r: PostRow, me: string | null): ApiPost => ({
     ? { key: r.song_key, title: r.song_title!, artist: r.song_artist! }
     : null,
   rank: r.rank,
-  hobong: r.hobong,
   aboutMonth: r.about_month,
   cohortMonth: r.cohort_month,
   branch: r.branch,
@@ -191,30 +213,127 @@ const toApi = (r: PostRow, me: string | null): ApiPost => ({
   createdAt: r.created_at,
   likedByMe: !!r.liked_by_me,
   mine: !!me && r.author_id === me,
+  parentId: r.parent_id,
+  ...(asker ? { byAsker: r.author_id === asker } : {}),
   hidden: r.status === "hidden",
 });
+
+const parse = <T>(schema: z.ZodType<T>, raw: unknown): T => {
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) {
+    throw new HttpError(
+      400,
+      parsed.error.issues[0]?.message ?? "잘못된 요청이에요",
+    );
+  }
+  return parsed.data;
+};
 
 const SELECT_POST = `
   SELECT p.*, (l.author_id IS NOT NULL) AS liked_by_me
   FROM posts p
   LEFT JOIN likes l ON l.post_id = p.id AND l.author_id = ?1`;
 
-/** Memories under one song, newest first. */
-async function listSongRecords(req: Request, env: Env, url: URL, song: string) {
+/**
+ * One page of posts matching `where`, newest first. `where` may use ?1 (me)
+ * and ?5, ?6 … for `params`. The cursor "created_at|id" is the last post of
+ * the previous page.
+ */
+async function pagedPosts(
+  req: Request,
+  env: Env,
+  url: URL,
+  where: string,
+  params: unknown[] = [],
+) {
   const limit = Math.min(
     100,
-    Math.max(1, Number(url.searchParams.get("limit")) || 50),
+    Math.max(1, Number(url.searchParams.get("limit")) || PAGE),
   );
+  const before = url.searchParams.get("before");
+  const cut = before ? before.lastIndexOf("|") : -1;
+  const beforeAt = cut > 0 ? before!.slice(0, cut) : null;
+  const beforeId = cut > 0 ? before!.slice(cut + 1) : null;
   const me = await authorOf(req);
   const { results } = await env.DB.prepare(
     `${SELECT_POST}
-     WHERE p.kind = 'record' AND p.song_key = ?2 AND p.status = 'visible'
-     ORDER BY p.created_at DESC
-     LIMIT ?3`,
+     WHERE ${where}
+       AND (?3 IS NULL OR p.created_at < ?3
+            OR (p.created_at = ?3 AND p.id < ?4))
+     ORDER BY p.created_at DESC, p.id DESC
+     LIMIT ?2`,
   )
-    .bind(me ?? "", song, limit)
+    .bind(me ?? "", limit + 1, beforeAt, beforeId, ...params)
     .all<PostRow>();
-  return json({ posts: results.map((r) => toApi(r, me)) });
+  const page = results.slice(0, limit);
+  const last = page[page.length - 1];
+  return json({
+    posts: page.map((r) => toApi(r, me)),
+    next:
+      results.length > limit && last ? `${last.created_at}|${last.id}` : null,
+  });
+}
+
+/** Memories under one song. */
+const listSongRecords = (req: Request, env: Env, url: URL, song: string) =>
+  pagedPosts(
+    req,
+    env,
+    url,
+    "p.kind = 'record' AND p.song_key = ?5 AND p.status = 'visible'",
+    [song],
+  );
+
+/**
+ * The 커뮤니티 feed: 커뮤니티 글 and memories under songs together. `rank`
+ * only that rank's (the chart's, for a song), `reserve=1` only by 예비역.
+ */
+function listCommunityFeed(req: Request, env: Env, url: URL) {
+  const rank = z.enum(POST_RANKS).safeParse(url.searchParams.get("rank"));
+  const reserve = url.searchParams.get("reserve") === "1" ? 1 : null;
+  return pagedPosts(
+    req,
+    env,
+    url,
+    `p.kind IN ('record', 'post') AND p.status = 'visible'
+     AND (?5 IS NULL OR p.rank = ?5) AND (?6 IS NULL OR p.is_reserve = ?6)`,
+    [rank.success ? rank.data : null, reserve],
+  );
+}
+
+/** 선후임 소통 글; `reserve=1` only by 예비역, `reserve=0` only by 현역. */
+function listTalks(req: Request, env: Env, url: URL) {
+  const r = url.searchParams.get("reserve");
+  return pagedPosts(
+    req,
+    env,
+    url,
+    "p.kind = 'talk' AND p.status = 'visible' AND (?5 IS NULL OR p.is_reserve = ?5)",
+    [r === "1" ? 1 : r === "0" ? 0 : null],
+  );
+}
+
+/** A 소통 글 and its replies, oldest reply first. */
+async function getThread(req: Request, env: Env, id: string) {
+  const me = await authorOf(req);
+  const talk = await env.DB.prepare(
+    `${SELECT_POST} WHERE p.id = ?2 AND p.kind = 'talk' AND p.status = 'visible'`,
+  )
+    .bind(me ?? "", id)
+    .first<PostRow>();
+  if (!talk) throw new HttpError(404, "글을 찾을 수 없어요");
+  const { results } = await env.DB.prepare(
+    `${SELECT_POST}
+     WHERE p.parent_id = ?2 AND p.kind = 'reply' AND p.status = 'visible'
+     ORDER BY p.created_at, p.id
+     LIMIT 300`,
+  )
+    .bind(me ?? "", id)
+    .all<PostRow>();
+  return json({
+    post: toApi(talk, me),
+    replies: results.map((r) => toApi(r, me, talk.author_id)),
+  });
 }
 
 interface EventRow {
@@ -253,11 +372,11 @@ async function listEvents(env: Env, url: URL) {
   return json({ events: results.map(toApiEvent) });
 }
 
+/** Song memories filed under timeline months, by month, most liked. */
 async function listMonthRecords(req: Request, env: Env, url: URL) {
   const from = url.searchParams.get("from") ?? "";
   const to = url.searchParams.get("to") ?? "";
   const cohort = url.searchParams.get("cohort");
-  const songs = url.searchParams.get("songs") === "1" ? 1 : 0;
   if (!MONTH.test(from) || !MONTH.test(to) || from > to) {
     throw new HttpError(400, "from, to 값이 필요해요 (YYYY-MM)");
   }
@@ -268,61 +387,69 @@ async function listMonthRecords(req: Request, env: Env, url: URL) {
   const { results } = await env.DB.prepare(
     `${SELECT_POST}
      WHERE p.kind = 'record' AND p.status = 'visible'
-       AND (?6 = 1 OR p.song_key IS NULL) AND p.event_id IS NULL
        AND p.about_month BETWEEN ?2 AND ?3
        AND (?4 IS NULL OR p.cohort_month = ?4)
      ORDER BY p.about_month, p.like_count DESC, p.created_at DESC
      LIMIT ?5`,
   )
-    .bind(me ?? "", from, to, cohort, TIMELINE_LIMIT, songs)
+    .bind(me ?? "", from, to, cohort, TIMELINE_LIMIT)
     .all<PostRow>();
   return json({ posts: results.map((r) => toApi(r, me)) });
 }
 
-/** The caller's own 한마디 across every 계급·호봉, newest first. */
-async function listMyLetters(req: Request, env: Env) {
-  const me = await authorOf(req);
-  if (!me) return json({ posts: [] });
-  const { results } = await env.DB.prepare(
-    `${SELECT_POST}
-     WHERE p.kind = 'letter' AND p.author_id = ?1 AND p.status = 'visible'
-     ORDER BY p.created_at DESC
-     LIMIT 50`,
-  )
-    .bind(me)
-    .all<PostRow>();
-  return json({ posts: results.map((r) => toApi(r, me)) });
-}
-
-/** 한마디 for one 계급·호봉, most liked then newest. */
-async function listLetters(req: Request, env: Env, url: URL) {
-  if (url.searchParams.get("mine") === "1") return listMyLetters(req, env);
-  const rank = z.enum(POST_RANKS).safeParse(url.searchParams.get("rank"));
-  const hobong = Number(url.searchParams.get("hobong"));
-  if (!rank.success || !Number.isInteger(hobong) || hobong < 1 || hobong > 12) {
-    throw new HttpError(400, "rank, hobong 값이 필요해요");
-  }
-  const me = await authorOf(req);
-  const { results } = await env.DB.prepare(
-    `${SELECT_POST}
-     WHERE p.kind = 'letter' AND p.rank = ?2 AND p.hobong = ?3
-       AND p.status = 'visible'
-     ORDER BY p.like_count DESC, p.created_at DESC
-     LIMIT 50`,
-  )
-    .bind(me ?? "", rank.data, hobong)
-    .all<PostRow>();
-  return json({ posts: results.map((r) => toApi(r, me)) });
-}
-
-/** How many memories each song has, for the chart lists. */
-async function songCounts(env: Env) {
+/** Memories and hearts per song, for the chart lists. */
+async function songCounts(req: Request, env: Env) {
   const { results } = await env.DB.prepare(
     `SELECT song_key AS k, COUNT(*) AS n FROM posts
-     WHERE kind = 'record' AND song_key IS NOT NULL AND status = 'visible'
+     WHERE kind = 'record' AND status = 'visible'
      GROUP BY song_key`,
   ).all<{ k: string; n: number }>();
-  return json({ counts: Object.fromEntries(results.map((r) => [r.k, r.n])) });
+  const stats: ApiSongStats = {
+    counts: Object.fromEntries(results.map((r) => [r.k, r.n])),
+    likes: {},
+    liked: [],
+  };
+  // Hearts are best effort, so the counts still load without migration 0005
+  try {
+    const me = await authorOf(req);
+    const [all, mine] = await env.DB.batch<{ k: string; n: number }>([
+      env.DB.prepare(
+        "SELECT song_key AS k, COUNT(*) AS n FROM song_likes GROUP BY song_key",
+      ),
+      env.DB.prepare(
+        "SELECT song_key AS k, 1 AS n FROM song_likes WHERE author_id = ?",
+      ).bind(me ?? ""),
+    ]);
+    stats.likes = Object.fromEntries(all.results.map((r) => [r.k, r.n]));
+    stats.liked = mine.results.map((r) => r.k);
+  } catch (err) {
+    console.error("song likes unavailable", err);
+  }
+  return json(stats);
+}
+
+async function toggleSongLike(req: Request, env: Env) {
+  const { key } = parse(SongLike, await readJson(req));
+  const me = await writer(req, env.DB);
+  const added = await env.DB.prepare(
+    "INSERT OR IGNORE INTO song_likes (song_key, author_id) VALUES (?, ?)",
+  )
+    .bind(key, me)
+    .run();
+  const liked = added.meta.changes > 0;
+  if (!liked) {
+    await env.DB.prepare(
+      "DELETE FROM song_likes WHERE song_key = ? AND author_id = ?",
+    )
+      .bind(key, me)
+      .run();
+  }
+  const row = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM song_likes WHERE song_key = ?",
+  )
+    .bind(key)
+    .first<{ n: number }>();
+  return json({ liked, likes: row?.n ?? 0 });
 }
 
 /** Everything the caller wrote, newest first, hidden (reported) ones too. */
@@ -350,11 +477,11 @@ interface NotificationRow {
   body: string;
   song_title: string | null;
   rank: ApiPost["rank"];
-  hobong: number | null;
   about_month: string | null;
+  parent_id: string | null;
 }
 
-/** Likes on my posts, one entry per post and type, newest activity first. */
+/** Likes and replies on my posts, one entry per post and type, newest activity first. */
 async function listNotifications(req: Request, env: Env, url: URL) {
   const onlyCount = url.searchParams.get("count") === "1";
   const me = await authorOf(req);
@@ -373,7 +500,8 @@ async function listNotifications(req: Request, env: Env, url: URL) {
   const { results } = await env.DB.prepare(
     `SELECT n.type, n.post_id, COUNT(*) AS count,
             SUM(n.read_at IS NULL) AS unread, MAX(n.created_at) AS last_at,
-            p.kind, p.body, p.song_title, p.rank, p.hobong, p.about_month
+            p.kind, p.body, p.song_title, p.rank, p.about_month,
+            p.parent_id
      FROM notifications n
      JOIN posts p ON p.id = n.post_id
      WHERE n.recipient_id = ? AND p.status <> 'deleted'
@@ -394,8 +522,8 @@ async function listNotifications(req: Request, env: Env, url: URL) {
       body: r.body,
       songTitle: r.song_title,
       rank: r.rank,
-      hobong: r.hobong,
       aboutMonth: r.about_month,
+      parentId: r.parent_id,
     },
   }));
   return json({ unread, notifications });
@@ -447,6 +575,28 @@ async function notifyLike(
   }
 }
 
+/**
+ * Tell whoever wrote a 소통 글 about a reply (never about their own). More
+ * replies from the same person bring the notification back as unread.
+ */
+async function notifyReply(db: D1Database, talkId: string, actor: string) {
+  try {
+    await db
+      .prepare(
+        `INSERT INTO notifications (recipient_id, type, post_id, actor_id)
+         SELECT author_id, 'reply', id, ?2 FROM posts
+         WHERE id = ?1 AND author_id <> ?2
+         ON CONFLICT (type, post_id, actor_id) DO UPDATE
+           SET read_at = NULL,
+               created_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`,
+      )
+      .bind(talkId, actor)
+      .run();
+  } catch (err) {
+    console.error("notifyReply failed", err);
+  }
+}
+
 /** Rate limits shared by every kind of post. */
 async function checkLimits(db: D1Database, me: string) {
   for (const limit of LIMITS) {
@@ -461,42 +611,37 @@ async function checkLimits(db: D1Database, me: string) {
   }
 }
 
-async function createLetter(env: Env, req: Request, raw: unknown) {
-  const parsed = NewLetter.safeParse(raw);
-  if (!parsed.success) {
-    throw new HttpError(
-      400,
-      parsed.error.issues[0]?.message ?? "잘못된 요청이에요",
-    );
-  }
-  const input = parsed.data;
+async function createPost(req: Request, env: Env) {
+  const raw = await readJson(req);
+  const kind =
+    raw && typeof raw === "object" && "kind" in raw ? raw.kind : null;
+  if (kind === "post")
+    return createPlain(env, req, parse(NewCommunityPost, raw));
+  if (kind === "talk") return createPlain(env, req, parse(NewTalk, raw));
+  if (kind === "reply") return createReply(env, req, raw);
+  if (kind === "record") return createRecord(req, env, raw);
+  throw new HttpError(400, "잘못된 요청이에요");
+}
+
+/** A 커뮤니티 글 or a 소통 글: body, rank and who wrote it. */
+async function createPlain(
+  env: Env,
+  req: Request,
+  input: z.infer<typeof NewCommunityPost> | z.infer<typeof NewTalk>,
+) {
   const me = await writer(req, env.DB);
   await checkLimits(env.DB, me);
-  // Reported (hidden) ones still count, so hiding doesn't free a slot.
-  const mine = await env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM posts
-     WHERE kind = 'letter' AND author_id = ? AND rank = ? AND hobong = ?
-       AND status <> 'deleted'`,
-  )
-    .bind(me, input.rank, input.hobong)
-    .first<{ n: number }>();
-  if ((mine?.n ?? 0) >= LETTERS_PER_SLOT) {
-    throw new HttpError(
-      409,
-      `${input.rank} ${input.hobong}호봉에는 ${LETTERS_PER_SLOT}개까지 남길 수 있어요`,
-    );
-  }
   const id = crypto.randomUUID();
   await env.DB.prepare(
-    `INSERT INTO posts (id, kind, body, rank, hobong, author_id, cohort_month,
-                        branch, is_reserve)
-     VALUES (?, 'letter', ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO posts (id, kind, body, rank, author_id, cohort_month, branch,
+                        is_reserve)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
+      input.kind,
       input.body,
       input.rank,
-      input.hobong,
       me,
       input.cohortMonth,
       input.branch,
@@ -509,51 +654,64 @@ async function createLetter(env: Env, req: Request, raw: unknown) {
   return json({ post: toApi(row!, me) }, 201);
 }
 
-async function createPost(req: Request, env: Env) {
-  const raw = await readJson(req);
-  return raw &&
-    typeof raw === "object" &&
-    "kind" in raw &&
-    raw.kind === "letter"
-    ? createLetter(env, req, raw)
-    : createRecord(req, env, raw);
+async function createReply(env: Env, req: Request, raw: unknown) {
+  const input = parse(NewReply, raw);
+  const me = await writer(req, env.DB);
+  const talk = await env.DB.prepare(
+    "SELECT author_id FROM posts WHERE id = ? AND kind = 'talk' AND status = 'visible'",
+  )
+    .bind(input.parentId)
+    .first<{ author_id: string }>();
+  if (!talk) throw new HttpError(404, "글을 찾을 수 없어요");
+  await checkLimits(env.DB, me);
+  const id = crypto.randomUUID();
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO posts (id, kind, body, parent_id, author_id, cohort_month,
+                          branch, is_reserve)
+       VALUES (?, 'reply', ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      id,
+      input.body,
+      input.parentId,
+      me,
+      input.cohortMonth,
+      input.branch,
+      input.isReserve ? 1 : 0,
+    ),
+    env.DB.prepare(
+      "UPDATE posts SET reply_count = reply_count + 1 WHERE id = ?",
+    ).bind(input.parentId),
+  ]);
+  await notifyReply(env.DB, input.parentId, me);
+  const row = await env.DB.prepare(`${SELECT_POST} WHERE p.id = ?2`)
+    .bind(me, id)
+    .first<PostRow>();
+  return json({ post: toApi(row!, me, talk.author_id) }, 201);
 }
 
+/** A memory under a song. */
 async function createRecord(req: Request, env: Env, raw: unknown) {
-  const parsed = (
-    raw && typeof raw === "object" && "song" in raw
-      ? NewSongRecord
-      : NewMonthRecord
-  ).safeParse(raw);
-  if (!parsed.success) {
-    throw new HttpError(
-      400,
-      parsed.error.issues[0]?.message ?? "잘못된 요청이에요",
-    );
-  }
-  const input = parsed.data;
+  const input = parse(NewSongRecord, raw);
   const me = await writer(req, env.DB);
   await checkLimits(env.DB, me);
 
-  // A song memory hangs on the song, a month record only on its month
-  const song = "song" in input ? input.song : null;
-  const hobong = "hobong" in input ? (input.hobong ?? null) : null;
+  const { song } = input;
 
   const id = crypto.randomUUID();
   await env.DB.prepare(
     `INSERT INTO posts (id, kind, body, song_key, song_title, song_artist,
-                        rank, hobong, about_month, author_id, cohort_month,
+                        rank, about_month, author_id, cohort_month,
                         branch, is_reserve)
-     VALUES (?, 'record', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, 'record', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
       input.body,
-      song?.key ?? null,
-      song?.title ?? null,
-      song?.artist ?? null,
+      song.key,
+      song.title,
+      song.artist,
       input.rank,
-      hobong,
       input.aboutMonth,
       me,
       input.cohortMonth,
@@ -579,12 +737,21 @@ async function visiblePost(db: D1Database, id: string) {
 async function deletePost(req: Request, env: Env, id: string) {
   const me = await authorOf(req);
   if (!me) throw new HttpError(401, "기기 정보가 없어요");
-  const res = await env.DB.prepare(
-    "UPDATE posts SET status = 'deleted' WHERE id = ? AND author_id = ? AND status <> 'deleted'",
+  const gone = await env.DB.prepare(
+    `UPDATE posts SET status = 'deleted'
+     WHERE id = ? AND author_id = ? AND status <> 'deleted'
+     RETURNING kind, parent_id`,
   )
     .bind(id, me)
-    .run();
-  if (!res.meta.changes) throw new HttpError(404, "지울 수 있는 글이 아니에요");
+    .first<{ kind: ApiPost["kind"]; parent_id: string | null }>();
+  if (!gone) throw new HttpError(404, "지울 수 있는 글이 아니에요");
+  if (gone.kind === "reply" && gone.parent_id) {
+    await env.DB.prepare(
+      "UPDATE posts SET reply_count = MAX(0, reply_count - 1) WHERE id = ?",
+    )
+      .bind(gone.parent_id)
+      .run();
+  }
   return new Response(null, { status: 204 });
 }
 
@@ -650,7 +817,10 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
     parts.length === 2 &&
     req.method === "GET"
   ) {
-    return songCounts(env);
+    return songCounts(req, env);
+  }
+  if (resource === "songs" && id === "like" && parts.length === 3) {
+    if (req.method === "POST") return toggleSongLike(req, env);
   }
   if (resource === "me" && id === "posts" && parts.length === 3) {
     if (req.method === "GET") return listMyPosts(req, env);
@@ -671,12 +841,16 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
     if (req.method === "GET") {
       const song = url.searchParams.get("song");
       if (song) return listSongRecords(req, env, url, song);
-      if (url.searchParams.get("kind") === "letter") {
-        return listLetters(req, env, url);
+      if (url.searchParams.get("feed")) {
+        return listCommunityFeed(req, env, url);
       }
+      const kind = url.searchParams.get("kind");
+      if (kind === "talk") return listTalks(req, env, url);
       return listMonthRecords(req, env, url);
     }
     if (req.method === "POST") return createPost(req, env);
+  } else if (!action && req.method === "GET") {
+    return getThread(req, env, id);
   } else if (!action && req.method === "DELETE") {
     return deletePost(req, env, id);
   } else if (action === "like" && req.method === "POST") {

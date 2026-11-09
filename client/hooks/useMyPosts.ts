@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ApiSongStats } from "@shared/posts";
 import { memoryStore } from "@/lib/memories";
 import { invalidatePosts } from "./postsCache";
 
@@ -24,13 +25,51 @@ export function useMyPosts() {
   };
 }
 
-/** song key → memories under it, for the chart lists. */
-export function useSongCounts() {
-  const query = useQuery({
+const useSongStatsQuery = () =>
+  useQuery({
     queryKey: ["song-counts"],
-    queryFn: memoryStore.songCounts,
+    queryFn: memoryStore.songStats,
     staleTime: 60_000,
     retry: false,
   });
-  return query.data;
+
+/** song key → memories under it, for the chart lists. */
+export function useSongCounts() {
+  return useSongStatsQuery().data?.counts;
+}
+
+/** song key → hearts, and the songs I hearted. */
+export function useSongLikes() {
+  const data = useSongStatsQuery().data;
+  return { likes: data?.likes ?? {}, liked: new Set(data?.liked ?? []) };
+}
+
+/** Heart / unheart a song, shown at once and then confirmed. */
+export function useToggleSongLike() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (key: string) => memoryStore.toggleSongLike(key),
+    onMutate: async (key) => {
+      await qc.cancelQueries({ queryKey: ["song-counts"] });
+      const before = qc.getQueryData<ApiSongStats>(["song-counts"]);
+      if (before) {
+        const on = !before.liked.includes(key);
+        qc.setQueryData<ApiSongStats>(["song-counts"], {
+          ...before,
+          liked: on
+            ? [...before.liked, key]
+            : before.liked.filter((k) => k !== key),
+          likes: {
+            ...before.likes,
+            [key]: Math.max(0, (before.likes[key] ?? 0) + (on ? 1 : -1)),
+          },
+        });
+      }
+      return { before };
+    },
+    onError: (_err, _key, ctx) => {
+      if (ctx?.before) qc.setQueryData(["song-counts"], ctx.before);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["song-counts"] }),
+  });
 }

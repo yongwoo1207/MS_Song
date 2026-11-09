@@ -1,11 +1,12 @@
 /**
  * Memories (records): short posts about what a song meant to someone in
- * service, or what a month of service was like (timeline). Stored in Cloudflare D1 behind the Worker's
+ * service. The timeline shows them under the chart month they came from. Stored in Cloudflare D1 behind the Worker's
  * /api/posts (worker/index.ts); the UI only talks to `memoryStore`.
  */
 import { format } from "date-fns";
 import {
   type ApiPost,
+  type ApiSongStats,
   DEVICE_HEADER,
   type PostBranch,
   type PostRank,
@@ -31,53 +32,49 @@ export interface NewMemory {
   author: MemoryAuthor;
 }
 
-/** A record written straight to a timeline month. */
-export interface NewMonthMemory {
-  aboutMonth: string; // 'YYYY-MM'
-  body: string;
-  rank: PostRank;
-  hobong?: number;
-  author: MemoryAuthor;
-}
-
-/** A 계급·호봉 slot: 한마디 written for it show to whoever is there later. */
-export interface HobongSlot {
-  rank: PostRank;
-  hobong: number;
-}
-
-/** A 한마디 for the next people at a 계급·호봉. */
-export interface NewLetter extends HobongSlot {
-  body: string;
-  author: MemoryAuthor;
-}
-
 export interface MonthRange {
   from: string; // 'YYYY-MM'
   to: string;
   cohort?: string; // only this 군번
-  songs?: boolean; // song memories filed under those months too
 }
 
+/** One page of a song's memories; `next` fetches the following one. */
+export interface MemoryPage {
+  posts: Memory[];
+  next: string | null;
+}
+
+export const MEMORY_PAGE = 20;
+
+/** A 커뮤니티 글: which 시절 it is about, no song. */
+export interface NewPost {
+  body: string;
+  rank: PostRank;
+  author: MemoryAuthor;
+}
+
+/** 커뮤니티 filter: one rank's posts, or only 예비역's. */
+export type FeedFilter = PostRank | "예비역" | null;
+
 export interface MemoryStore {
-  list(songKey: string): Promise<Memory[]>;
+  list(songKey: string, before?: string): Promise<MemoryPage>;
+  /** 커뮤니티 글 and song memories, newest first. */
+  feed(filter: FeedFilter, before?: string): Promise<MemoryPage>;
+  /** A 커뮤니티 글, on no song. */
+  addPost(input: NewPost): Promise<Memory>;
   listMonths(range: MonthRange): Promise<Memory[]>;
   add(input: NewMemory): Promise<Memory>;
-  addMonth(input: NewMonthMemory): Promise<Memory>;
-  listLetters(slot: HobongSlot): Promise<Memory[]>;
-  /** My own 한마디 across every 계급·호봉. */
-  listMyLetters(): Promise<Memory[]>;
-  addLetter(input: NewLetter): Promise<Memory>;
   remove(id: string): Promise<void>;
   toggleLike(id: string): Promise<{ liked: boolean; likes: number }>;
   /** Everything written from this device, hidden ones too. */
   listMine(): Promise<Memory[]>;
-  /** song key → number of memories under it */
-  songCounts(): Promise<Record<string, number>>;
+  /** memories and hearts per song key */
+  songStats(): Promise<ApiSongStats>;
+  toggleSongLike(key: string): Promise<{ liked: boolean; likes: number }>;
 }
 
 export const MEMORY_MAX_LENGTH = RECORD_MAX_LENGTH;
-export { LETTER_MAX_LENGTH, LETTERS_PER_SLOT } from "@shared/posts";
+export { COMMUNITY_MAX_LENGTH } from "@shared/posts";
 
 /** fetch against the Worker API with the device token; throws its error. */
 export async function apiCall<T>(
@@ -107,16 +104,33 @@ const call = <T>(path: string, init?: RequestInit) =>
   apiCall<T>(`/api/posts${path}`, init);
 
 export const apiMemoryStore: MemoryStore = {
-  async list(songKey) {
-    const data = await call<{ posts: Memory[] }>(
-      `?song=${encodeURIComponent(songKey)}`,
-    );
-    return data.posts;
+  async list(songKey, before) {
+    const q = new URLSearchParams({ song: songKey, limit: `${MEMORY_PAGE}` });
+    if (before) q.set("before", before);
+    const data = await call<{ posts: Memory[]; next?: string | null }>(`?${q}`);
+    return { posts: data.posts, next: data.next ?? null };
   },
-  async listMonths({ from, to, cohort, songs }) {
+  async feed(filter, before) {
+    const q = new URLSearchParams({
+      feed: "community",
+      limit: `${MEMORY_PAGE}`,
+    });
+    if (filter === "예비역") q.set("reserve", "1");
+    else if (filter) q.set("rank", filter);
+    if (before) q.set("before", before);
+    const data = await call<{ posts: Memory[]; next?: string | null }>(`?${q}`);
+    return { posts: data.posts, next: data.next ?? null };
+  },
+  async addPost({ body, rank, author }) {
+    const data = await call<{ post: Memory }>("", {
+      method: "POST",
+      body: JSON.stringify({ kind: "post", body, rank, ...author }),
+    });
+    return data.post;
+  },
+  async listMonths({ from, to, cohort }) {
     const q = new URLSearchParams({ from, to });
     if (cohort) q.set("cohort", cohort);
-    if (songs) q.set("songs", "1");
     const data = await call<{ posts: Memory[] }>(`?${q}`);
     return data.posts;
   },
@@ -134,40 +148,6 @@ export const apiMemoryStore: MemoryStore = {
     });
     return data.post;
   },
-  async addMonth({ aboutMonth, body, rank, hobong, author }) {
-    const data = await call<{ post: Memory }>("", {
-      method: "POST",
-      body: JSON.stringify({
-        kind: "record",
-        aboutMonth,
-        body,
-        rank,
-        hobong,
-        ...author,
-      }),
-    });
-    return data.post;
-  },
-  async listLetters({ rank, hobong }) {
-    const q = new URLSearchParams({
-      kind: "letter",
-      rank,
-      hobong: `${hobong}`,
-    });
-    const data = await call<{ posts: Memory[] }>(`?${q}`);
-    return data.posts;
-  },
-  async listMyLetters() {
-    const data = await call<{ posts: Memory[] }>("?kind=letter&mine=1");
-    return data.posts;
-  },
-  async addLetter({ rank, hobong, body, author }) {
-    const data = await call<{ post: Memory }>("", {
-      method: "POST",
-      body: JSON.stringify({ kind: "letter", rank, hobong, body, ...author }),
-    });
-    return data.post;
-  },
   async remove(id) {
     await call(`/${encodeURIComponent(id)}`, { method: "DELETE" });
   },
@@ -178,11 +158,19 @@ export const apiMemoryStore: MemoryStore = {
     const data = await apiCall<{ posts: Memory[] }>("/api/me/posts");
     return data.posts;
   },
-  async songCounts() {
-    const data = await apiCall<{ counts: Record<string, number> }>(
-      "/api/song-counts",
-    );
-    return data.counts;
+  async songStats() {
+    const data = await apiCall<Partial<ApiSongStats>>("/api/song-counts");
+    return {
+      counts: data.counts ?? {},
+      likes: data.likes ?? {},
+      liked: data.liked ?? [],
+    };
+  },
+  toggleSongLike(key) {
+    return apiCall("/api/songs/like", {
+      method: "POST",
+      body: JSON.stringify({ key }),
+    });
   },
 };
 
@@ -210,13 +198,12 @@ export function monthLabel(month: string) {
   return `${y}년 ${Number(m)}월`;
 }
 
-/** Where a post lives, e.g. "♪ LOVE DIVE · IVE", "상병 2호봉 후임에게". */
-export function postContext(
-  p: Pick<Memory, "kind" | "song" | "rank" | "hobong" | "aboutMonth">,
-): string {
+/** Where a post lives, e.g. "♪ LOVE DIVE · IVE", "일병 시절 · 커뮤니티 글". */
+export function postContext(p: Pick<Memory, "kind" | "song" | "rank">): string {
   if (p.song) return `♪ ${p.song.title} · ${p.song.artist}`;
-  if (p.kind === "letter") return `${p.rank} ${p.hobong}호봉 후임에게`;
-  if (p.aboutMonth) return `${monthLabel(p.aboutMonth)} 타임라인`;
+  if (p.kind === "post") return `${p.rank ?? ""} 시절 · 커뮤니티 글`;
+  if (p.kind === "talk") return "선후임 소통 글";
+  if (p.kind === "reply") return "선후임 소통 답글";
   return "";
 }
 

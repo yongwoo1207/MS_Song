@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type Memory, apiMemoryStore, postContext } from "./memories";
+import { apiMemoryStore, postContext } from "./memories";
 import {
   type Notification,
   notificationApi,
+  notificationHref,
   notificationText,
 } from "./notifications";
+import { talkApi } from "./talks";
 
 vi.mock("./device", () => ({ deviceToken: () => "test-device-token-1234" }));
 
@@ -16,12 +18,16 @@ const post = (p: Partial<Notification["post"]>): Notification["post"] => ({
   body: "본문",
   songTitle: null,
   rank: null,
-  hobong: null,
   aboutMonth: null,
+  parentId: null,
   ...p,
 });
-const like = (p: Partial<Notification["post"]>, count = 3): Notification => ({
-  type: "like",
+const like = (
+  p: Partial<Notification["post"]>,
+  count = 3,
+  type: Notification["type"] = "like",
+): Notification => ({
+  type,
   postId: "1",
   count,
   unread: 1,
@@ -30,27 +36,27 @@ const like = (p: Partial<Notification["post"]>, count = 3): Notification => ({
 });
 
 describe("notificationText", () => {
-  it("names what was liked", () => {
+  it("names what was liked or answered", () => {
     expect(notificationText(like({ songTitle: "LOVE DIVE" }))).toBe(
       "'LOVE DIVE'에 남긴 추억에 공감 3개가 달렸어요",
     );
-    expect(
-      notificationText(like({ kind: "letter", rank: "상병", hobong: 2 }, 1)),
-    ).toBe("상병 2호봉에 남긴 한마디에 공감 1개가 달렸어요");
-    expect(notificationText(like({ aboutMonth: "2021-03" }))).toBe(
-      "2021년 3월 타임라인 기록에 공감 3개가 달렸어요",
+    expect(notificationText(like({ kind: "post", rank: "일병" }, 1))).toBe(
+      "내 커뮤니티 글에 공감 1개가 달렸어요",
     );
+    const answered = like({ kind: "talk" }, 2, "reply");
+    expect(notificationText(answered)).toBe(
+      "내 소통 글에 2명이 답글을 달았어요",
+    );
+    expect(notificationHref(answered)).toBe("/talk/1");
+    expect(notificationHref(like({ kind: "reply", parentId: "t9" }))).toBe(
+      "/talk/t9",
+    );
+    expect(notificationHref(like({ songTitle: "x" }))).toBe("/me");
   });
 });
 
 describe("postContext", () => {
-  const base = {
-    kind: "record",
-    song: null,
-    rank: "일병",
-    hobong: null,
-    aboutMonth: null,
-  } as const;
+  const base = { kind: "post", song: null, rank: "일병" } as const;
   it("says where a post lives", () => {
     expect(
       postContext({
@@ -58,15 +64,13 @@ describe("postContext", () => {
         song: { key: "a|b", title: "Hype Boy", artist: "NewJeans" },
       }),
     ).toBe("♪ Hype Boy · NewJeans");
-    expect(
-      postContext({ ...base, kind: "letter", rank: "상병", hobong: 2 }),
-    ).toBe("상병 2호봉 후임에게");
-    expect(
-      postContext({ ...base, aboutMonth: "2022-11" } as Pick<
-        Memory,
-        "kind" | "song" | "rank" | "hobong" | "aboutMonth"
-      >),
-    ).toBe("2022년 11월 타임라인");
+    expect(postContext(base)).toBe("일병 시절 · 커뮤니티 글");
+    expect(postContext({ ...base, kind: "talk", rank: null })).toBe(
+      "선후임 소통 글",
+    );
+    expect(postContext({ ...base, kind: "reply", rank: null })).toBe(
+      "선후임 소통 답글",
+    );
   });
 });
 
@@ -74,30 +78,57 @@ describe("activity API", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("hits the right endpoints", async () => {
-    const fetch = vi.fn((url: string) =>
+    const fetch = vi.fn((url: string, _init?: RequestInit) =>
       reply(
         200,
         url.includes("count=1")
           ? { unread: 2 }
           : url.includes("song-counts")
             ? { counts: { "a|b": 1 } }
-            : { posts: [] },
+            : url.includes("songs/like")
+              ? { liked: true, likes: 1 }
+              : url === "/api/posts"
+                ? { post: {} }
+                : { posts: [] },
       ),
     );
     vi.stubGlobal("fetch", fetch);
     expect(await notificationApi.unread()).toBe(2);
-    expect(await apiMemoryStore.songCounts()).toEqual({ "a|b": 1 });
+    // An older Worker without hearts still works
+    expect(await apiMemoryStore.songStats()).toEqual({
+      counts: { "a|b": 1 },
+      likes: {},
+      liked: [],
+    });
     await apiMemoryStore.listMine();
-    await apiMemoryStore.listMonths({
-      from: "2021-10",
-      to: "2023-04",
-      songs: true,
+    await apiMemoryStore.toggleSongLike("a|b");
+    await apiMemoryStore.feed("일병", "c");
+    await talkApi.list({ reserve: true });
+    await apiMemoryStore.addPost({
+      body: "그때",
+      rank: "일병",
+      author: { cohortMonth: "2021-03", branch: "육군", isReserve: true },
     });
     expect(fetch.mock.calls.map((c) => c[0])).toEqual([
       "/api/notifications?count=1",
       "/api/song-counts",
       "/api/me/posts",
-      "/api/posts?from=2021-10&to=2023-04&songs=1",
+      "/api/songs/like",
+      `/api/posts?feed=community&limit=20&rank=${encodeURIComponent("일병")}&before=c`,
+      "/api/posts?kind=talk&limit=20&reserve=1",
+      "/api/posts",
     ]);
+    expect(
+      JSON.parse(
+        fetch.mock.calls[fetch.mock.calls.length - 1][1]!.body as string,
+      ),
+    ).toEqual({
+      kind: "post",
+      body: "그때",
+      rank: "일병",
+      cohortMonth: "2021-03",
+      branch: "육군",
+      isReserve: true,
+    });
   });
 });

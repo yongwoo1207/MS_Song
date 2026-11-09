@@ -1,18 +1,13 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
-import {
-  ExternalLink,
-  Heart,
-  MessageCircle,
-  PenLine,
-  ShieldAlert,
-} from "lucide-react";
+import { ExternalLink, Heart, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import type { ChartDB, ChartSong } from "@shared/api";
 import MobileShell from "@/components/ipdae/MobileShell";
 import AppHeader from "@/components/ipdae/AppHeader";
 import BottomNav from "@/components/ipdae/BottomNav";
 import NowPlaying from "@/components/ipdae/NowPlaying";
+import TimelineBar from "@/components/ipdae/TimelineBar";
 import { PlayIcon } from "@/components/ipdae/icons";
 import { useServicePlan } from "@/hooks/useServicePlan";
 import { usePlayer, type Player } from "@/hooks/usePlayer";
@@ -22,23 +17,21 @@ import { useEvents } from "@/hooks/useEvents";
 import { ddayStatus } from "@/lib/dday";
 import { type ServiceEvent, eventDateLabel } from "@/lib/events";
 import {
-  MEMORY_MAX_LENGTH,
   type Memory,
   type MemoryAuthor,
-  type NewMonthMemory,
   cohortLabel,
   cohortMonthOf,
 } from "@/lib/memories";
 import { type ServiceMonth, asMonthSong, serviceMonths } from "@/lib/timeline";
 import { cn } from "@/lib/utils";
 
-const PREVIEW = 3; // records shown per month before "모두 보기"
 const SONG_PREVIEW = 2; // song memories shown per month before "모두 보기"
 
 /**
  * 타임라인: the user's service month by month. Each chapter shows that
- * month's #1 song and major issues (사건), memories people left on that
- * month's songs, and the records people wrote about that month.
+ * month's #1 song, its major issues (사건) and the memories people left on
+ * that month's songs. Nothing is written here directly. A bar of the whole
+ * service stays pinned on top and follows the chapter being read.
  */
 export default function Timeline() {
   const { plan } = useServicePlan();
@@ -53,17 +46,81 @@ export default function Timeline() {
           to: months[months.length - 1].param,
         }
       : null;
-  const {
-    byMonth,
-    songsByMonth,
-    isLoading,
-    isError,
-    refetch,
-    add,
-    remove,
-    like,
-  } = useTimeline(range);
+  const { songsByMonth, isLoading, isError, refetch, remove, like } =
+    useTimeline(range);
   const events = useEvents(range);
+  const eventMonths = useMemo(
+    () => new Set(events.data ? [...events.data.keys()] : []),
+    [events.data],
+  );
+
+  // Pinned area (player + bar) and the chapter under it
+  const pinned = useRef<HTMLDivElement>(null);
+  const [pinnedHeight, setPinnedHeight] = useState(0);
+  const chapters = useRef<(HTMLElement | null)[]>([]);
+  const [active, setActive] = useState(0);
+  // After a seek from the bar, hold its chapter until the user scrolls
+  // (short last chapters can never reach the top on their own)
+  const held = useRef(false);
+
+  useEffect(() => {
+    const el = pinned.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setPinnedHeight(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [plan]);
+
+  useEffect(() => {
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      if (held.current) return;
+      const line = pinnedHeight + 16;
+      let i = 0;
+      chapters.current.forEach((el, idx) => {
+        if (el && el.getBoundingClientRect().top <= line) i = idx;
+      });
+      const atBottom =
+        window.innerHeight + window.scrollY >=
+        document.documentElement.scrollHeight - 4;
+      setActive(atBottom ? months.length - 1 : i);
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    const release = (e: Event) => {
+      if (!pinned.current?.contains(e.target as Node)) held.current = false;
+    };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    window.addEventListener("wheel", release, { passive: true });
+    window.addEventListener("touchstart", release, { passive: true });
+    window.addEventListener("keydown", release);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("wheel", release);
+      window.removeEventListener("touchstart", release);
+      window.removeEventListener("keydown", release);
+    };
+  }, [months.length, pinnedHeight]);
+
+  const seek = useCallback(
+    (index: number, smooth: boolean) => {
+      const el = chapters.current[index];
+      if (!el) return;
+      held.current = true;
+      setActive(index);
+      window.scrollTo({
+        top: el.getBoundingClientRect().top + window.scrollY - pinnedHeight - 8,
+        behavior: smooth ? "smooth" : "auto",
+      });
+    },
+    [pinnedHeight],
+  );
 
   if (!plan) return <Navigate to="/" replace />;
 
@@ -72,27 +129,36 @@ export default function Timeline() {
     branch: plan.branch,
     isReserve: ddayStatus(plan).status === "done",
   };
-  const total = byMonth
-    ? [...byMonth.values()].reduce((n, list) => n + list.length, 0)
+  const total = songsByMonth
+    ? [...songsByMonth.values()].reduce((n, list) => n + list.length, 0)
     : 0;
   const onError = (err: Error) => toast(err.message);
 
   return (
     <MobileShell>
       <AppHeader plan={plan} title="내 군생활 타임라인" />
-      <NowPlaying player={player} author={author} />
+      <div ref={pinned} className="sticky top-0 z-20 bg-background">
+        <NowPlaying player={player} author={author} />
+        <TimelineBar
+          plan={plan}
+          months={months}
+          active={Math.min(active, Math.max(0, months.length - 1))}
+          eventMonths={eventMonths}
+          onSeek={seek}
+        />
+      </div>
 
       <p className="px-4 pb-2 pt-2 text-xs leading-normal text-ink-icon">
         {months.length === 0
           ? "입대하면 달마다 챕터가 생겨요."
           : isLoading
-            ? "기록을 모으는 중…"
-            : `달마다 그 달 1위곡과 주요 이슈를 모았어요. 그 달이 어땠는지 남겨보세요${total ? ` · 기록 ${total}개` : ""}.`}
+            ? "불러오는 중…"
+            : `달마다 그 달 1위곡과 주요 이슈, 그 달 노래에 남겨진 추억을 모았어요${total ? ` · 추억 ${total}개` : ""}.`}
       </p>
 
       {isError && (
         <div className="mx-4 mb-2 flex items-center justify-between gap-2 rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-muted-foreground">
-          기록을 불러오지 못했어요.
+          추억을 불러오지 못했어요.
           <button
             type="button"
             onClick={() => refetch()}
@@ -104,26 +170,17 @@ export default function Timeline() {
       )}
 
       <main className="flex flex-col gap-2.5 px-4 pb-6">
-        {months.map((m) => (
+        {months.map((m, i) => (
           <MonthChapter
             key={m.key}
+            sectionRef={(el) => {
+              chapters.current[i] = el;
+            }}
             month={m}
             chart={chart.data}
             events={events.data?.get(m.param) ?? []}
-            records={byMonth?.get(m.param) ?? []}
             songMemories={songsByMonth?.get(m.param) ?? []}
             player={player}
-            author={author}
-            saving={add.isPending}
-            onAdd={(input, done) =>
-              add.mutate(input, {
-                onSuccess: () => {
-                  done();
-                  toast("기록을 남겼어요");
-                },
-                onError,
-              })
-            }
             onLike={(id) => like.mutate(id, { onError })}
             onDelete={(id) => remove.mutate(id, { onError })}
           />
@@ -136,36 +193,27 @@ export default function Timeline() {
 }
 
 function MonthChapter({
+  sectionRef,
   month,
   chart,
   events,
-  records,
   songMemories,
   player,
-  author,
-  saving,
-  onAdd,
   onLike,
   onDelete,
 }: {
+  sectionRef: (el: HTMLElement | null) => void;
   month: ServiceMonth;
   chart: ChartDB | undefined;
   events: ServiceEvent[];
-  records: Memory[];
   /** Memories left on songs, filed under this month's chart */
   songMemories: Memory[];
   player: Player;
-  author: MemoryAuthor;
-  saving: boolean;
-  onAdd: (input: NewMonthMemory, done: () => void) => void;
   onLike: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [songsExpanded, setSongsExpanded] = useState(false);
-  const [writing, setWriting] = useState(false);
   const top = chart?.[month.key]?.songs.find((s) => s.rank === 1);
-  const shown = expanded ? records : records.slice(0, PREVIEW);
   const songsShown = songsExpanded
     ? songMemories
     : songMemories.slice(0, SONG_PREVIEW);
@@ -182,6 +230,7 @@ function MonthChapter({
 
   return (
     <section
+      ref={sectionRef}
       aria-label={month.label}
       className="flex flex-col gap-2.5 rounded-2xl border bg-card px-3.5 pb-3 pt-3"
     >
@@ -274,7 +323,7 @@ function MonthChapter({
           </h3>
           <ul className="flex flex-col rounded-xl bg-background px-3 py-2">
             {songsShown.map((m) => (
-              <RecordRow
+              <SongMemoryRow
                 key={m.id}
                 memory={m}
                 onLike={() => onLike(m.id)}
@@ -296,68 +345,11 @@ function MonthChapter({
           )}
         </div>
       )}
-
-      {records.length > 0 && (
-        <ul className="flex flex-col" aria-label="이 달의 기록">
-          {shown.map((m) => (
-            <RecordRow
-              key={m.id}
-              memory={m}
-              onLike={() => onLike(m.id)}
-              onDelete={() => onDelete(m.id)}
-            />
-          ))}
-        </ul>
-      )}
-
-      {records.length > PREVIEW && (
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          aria-expanded={expanded}
-          className="h-9 rounded-xl border bg-card text-[12.5px] font-bold text-primary"
-        >
-          {expanded ? "접기" : `이 달 기록 ${records.length}개 모두 보기`}
-        </button>
-      )}
-
-      {writing ? (
-        <MonthComposer
-          month={month}
-          author={author}
-          saving={saving}
-          onCancel={() => setWriting(false)}
-          onSubmit={(body, done) =>
-            onAdd(
-              {
-                aboutMonth: month.param,
-                body,
-                rank: month.rank,
-                hobong: Math.min(12, month.hobong),
-                author,
-              },
-              () => {
-                done();
-                setWriting(false);
-              },
-            )
-          }
-        />
-      ) : (
-        <button
-          type="button"
-          onClick={() => setWriting(true)}
-          className="flex h-9 items-center justify-center gap-1.5 rounded-xl bg-accent text-[12.5px] font-bold text-primary"
-        >
-          <PenLine className="size-3.5" strokeWidth={2.2} aria-hidden="true" />
-          {records.length === 0 ? "이 달 첫 기록 남기기" : "이 달 기록 남기기"}
-        </button>
-      )}
     </section>
   );
 }
 
-function RecordRow({
+function SongMemoryRow({
   memory: m,
   onLike,
   onDelete,
@@ -375,7 +367,6 @@ function RecordRow({
       )}
       <span className="text-[11px] text-ink-icon">
         {cohortLabel(m.cohortMonth)} · 당시 {m.rank}
-        {m.hobong ? ` ${m.hobong}호봉` : ""}
         {m.isReserve ? " · 예비역" : ""}
         {m.mine ? " · 내 글" : ""}
       </span>
@@ -412,94 +403,5 @@ function RecordRow({
         )}
       </div>
     </li>
-  );
-}
-
-function MonthComposer({
-  month,
-  author,
-  saving,
-  onCancel,
-  onSubmit,
-}: {
-  month: ServiceMonth;
-  author: MemoryAuthor;
-  saving: boolean;
-  onCancel: () => void;
-  onSubmit: (body: string, done: () => void) => void;
-}) {
-  const [text, setText] = useState("");
-  const [error, setError] = useState("");
-  const id = `record-${month.param}`;
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!text.trim()) {
-      setError("내용을 입력해주세요");
-      return;
-    }
-    onSubmit(text, () => setText(""));
-  };
-
-  return (
-    <form
-      onSubmit={submit}
-      className="flex flex-col gap-1.5 rounded-xl bg-background px-3 pb-2.5 pt-2.5"
-    >
-      <label htmlFor={id} className="text-[12.5px] font-bold">
-        {month.label}, 나는 어땠나요?
-      </label>
-      <p className="flex items-center gap-1 text-[11px] font-bold text-destructive">
-        <ShieldAlert className="size-3.5 shrink-0" aria-hidden="true" />
-        부대명, 위치, 일정은 쓰지 말아주세요
-      </p>
-      <textarea
-        id={id}
-        autoFocus
-        value={text}
-        maxLength={MEMORY_MAX_LENGTH}
-        rows={3}
-        onChange={(e) => {
-          setText(e.target.value);
-          if (error) setError("");
-        }}
-        placeholder="첫 휴가 나가서 제일 먼저 들은 노래…"
-        aria-invalid={!!error}
-        aria-describedby={`${id}-help`}
-        className="min-h-[72px] resize-none rounded-xl border border-input bg-field px-3 py-2 text-sm leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-      />
-      <div
-        id={`${id}-help`}
-        className="flex items-center justify-between gap-2 text-[11px]"
-      >
-        {error ? (
-          <span className="text-destructive">{error}</span>
-        ) : (
-          <span className="text-ink-icon">
-            {cohortLabel(author.cohortMonth)} · 당시 {month.rank} {month.hobong}
-            호봉{author.isReserve ? " · 예비역으로" : "으로"} 표시돼요
-          </span>
-        )}
-        <span className="shrink-0 font-mono text-ink-icon">
-          {text.length}/{MEMORY_MAX_LENGTH}
-        </span>
-      </div>
-      <div className="flex gap-1.5">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="h-10 flex-1 rounded-xl border bg-card text-[13px] font-bold text-muted-foreground"
-        >
-          취소
-        </button>
-        <button
-          type="submit"
-          disabled={saving}
-          className="h-10 flex-[2] rounded-xl bg-primary text-[13px] font-bold text-primary-foreground disabled:opacity-60"
-        >
-          남기기
-        </button>
-      </div>
-    </form>
   );
 }

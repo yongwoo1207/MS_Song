@@ -5,10 +5,13 @@ import MobileShell from "@/components/ipdae/MobileShell";
 import SubHeader from "@/components/ipdae/SubHeader";
 import { useNotifications } from "@/hooks/useNotifications";
 import { timeAgo } from "@/lib/memories";
-import { notificationText } from "@/lib/notifications";
+import { notificationHref, notificationText } from "@/lib/notifications";
 import { cn } from "@/lib/utils";
 
-/** 알림: likes on my posts, one line per post. Opening it marks all read. */
+/**
+ * 알림: likes on my posts and replies to my 소통 글, one line per post.
+ * Opening it marks all read.
+ */
 export default function Notifications() {
   const { notifications, unread, isLoading, isError, refetch, markRead } =
     useNotifications();
@@ -39,7 +42,8 @@ export default function Notifications() {
           </div>
         ) : notifications.length === 0 ? (
           <p className="rounded-xl bg-muted px-4 py-6 text-center text-[13px] leading-relaxed text-muted-foreground">
-            아직 알림이 없어요. 내 글에 공감이 달리면 여기로 알려드려요.
+            아직 알림이 없어요. 내 글에 공감이나 답글이 달리면 여기로
+            알려드려요.
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
@@ -49,7 +53,7 @@ export default function Notifications() {
               return (
                 <li key={`${n.type}-${n.postId}`}>
                   <Link
-                    to="/me"
+                    to={notificationHref(n)}
                     className={cn(
                       "flex gap-3 rounded-2xl border px-3.5 py-3",
                       fresh ? "border-primary/40 bg-accent/60" : "bg-card",

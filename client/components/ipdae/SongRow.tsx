@@ -1,4 +1,4 @@
-import { MessageCircle } from "lucide-react";
+import { Heart, MessageCircle } from "lucide-react";
 import type { RankedChartSong } from "@shared/api";
 import { cn } from "@/lib/utils";
 import { PlayIcon } from "./icons";
@@ -8,6 +8,11 @@ interface SongRowProps {
   active: boolean;
   /** How many memories people left under the song */
   memories?: number;
+  /** How many people hearted the song */
+  likes?: number;
+  /** I hearted it */
+  liked?: boolean;
+  onLike?: () => void;
   /** Missing when no video is matched yet; the row is then not playable. */
   onPlay?: () => void;
 }
@@ -22,19 +27,27 @@ export default function SongRow({
   song,
   active,
   memories = 0,
+  likes = 0,
+  liked = false,
+  onLike,
   onPlay,
 }: SongRowProps) {
   return (
-    <li>
+    <li
+      className={cn(
+        "flex items-center rounded-xl transition-colors",
+        active && "bg-accent",
+      )}
+    >
       <button
         type="button"
         onClick={onPlay}
         disabled={!onPlay}
         aria-current={active ? "true" : undefined}
         className={cn(
-          "flex h-14 w-full items-center gap-3 rounded-xl px-2 text-left transition-colors",
+          "flex h-14 min-w-0 flex-1 items-center gap-3 rounded-xl pl-2 pr-1 text-left transition-colors",
           "hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:hover:bg-transparent",
-          active && "bg-accent hover:bg-accent",
+          active && "hover:bg-accent",
         )}
       >
         <span
@@ -97,6 +110,27 @@ export default function SongRow({
           </span>
         )}
       </button>
+      {onLike && (
+        <button
+          type="button"
+          onClick={onLike}
+          aria-pressed={liked}
+          aria-label={`${song.title} 좋아요 ${likes}`}
+          className={cn(
+            "flex h-14 w-10 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl",
+            liked ? "text-primary" : "text-ink-icon hover:text-foreground",
+          )}
+        >
+          <Heart
+            className={cn("size-[18px]", liked && "fill-current")}
+            strokeWidth={2}
+            aria-hidden="true"
+          />
+          <span className="font-mono text-[10.5px] font-bold leading-none">
+            {likes}
+          </span>
+        </button>
+      )}
     </li>
   );
 }

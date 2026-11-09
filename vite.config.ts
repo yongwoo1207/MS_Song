@@ -17,6 +17,7 @@ export default defineConfig(({ mode }) => ({
       "/api/song-counts": "http://127.0.0.1:8787",
       "/api/me": "http://127.0.0.1:8787",
       "/api/notifications": "http://127.0.0.1:8787",
+      "/api/songs": "http://127.0.0.1:8787",
     },
     fs: {
       allow: [
@@ -47,7 +48,7 @@ function expressPlugin(): Plugin {
       // Add Express app as middleware to Vite dev server. The posts API
       // belongs to the Worker: skip it so the dev proxy gets it.
       server.middlewares.use((req, res, next) =>
-        /^\/api\/(posts|events|song-counts|me|notifications)(\/|\?|$)/.test(req.url ?? "")
+        /^\/api\/(posts|events|song-counts|songs|me|notifications)(\/|\?|$)/.test(req.url ?? "")
           ? next()
           : app(req as express.Request, res as express.Response, next),
       );

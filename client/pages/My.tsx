@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { EyeOff, Heart, LogOut } from "lucide-react";
 import { toast } from "sonner";
+import ConfirmDelete from "@/components/ipdae/ConfirmDelete";
 import MobileShell from "@/components/ipdae/MobileShell";
 import SubHeader from "@/components/ipdae/SubHeader";
 import { useMyPosts } from "@/hooks/useMyPosts";
@@ -11,21 +12,31 @@ import { cn } from "@/lib/utils";
 
 type Tab = "posts" | "comments";
 
+/** The 소통 thread a talk or reply belongs to. */
+const threadOf = (m: Memory) =>
+  m.kind === "talk" ? m.id : m.kind === "reply" ? m.parentId : null;
+
 /**
- * 내 활동: everything written from this device. 글 are timeline records and
- * 한마디, 댓글 are memories left on songs. Each can be deleted here.
+ * 내 활동: everything written from this device. 글 are 커뮤니티 글 and
+ * 소통 글, 댓글 are memories left on songs and replies. Each can be
+ * deleted here.
  */
 export default function My() {
   const navigate = useNavigate();
   const { posts, isLoading, isError, refetch, remove } = useMyPosts();
   const [tab, setTab] = useState<Tab>("posts");
-  const writings = posts.filter((p) => !p.song);
-  const comments = posts.filter((p) => !!p.song);
+  const isComment = (p: Memory) => !!p.song || p.kind === "reply";
+  const writings = posts.filter((p) => !isComment(p));
+  const comments = posts.filter(isComment);
   const list = tab === "posts" ? writings : comments;
 
-  const onDelete = (m: Memory) => {
-    if (!window.confirm("이 글을 지울까요? 지운 글은 되돌릴 수 없어요."))
-      return;
+  // Asked in a dialog first (see ConfirmDelete)
+  const [deleting, setDeleting] = useState<Memory | null>(null);
+  const onDelete = (m: Memory) => setDeleting(m);
+  const confirmDelete = () => {
+    const m = deleting;
+    setDeleting(null);
+    if (!m) return;
     remove.mutate(m.id, {
       onSuccess: () => toast("지웠어요"),
       onError: (err) => toast(err.message),
@@ -67,8 +78,8 @@ export default function My() {
       </div>
       <p className="px-4 pb-2 text-xs leading-normal text-ink-icon">
         {tab === "posts"
-          ? "타임라인에 남긴 기록과 후임에게 남긴 한마디예요."
-          : "노래에 남긴 추억이에요."}{" "}
+          ? "커뮤니티 글과 선후임 소통 글이에요."
+          : "노래에 남긴 추억과 소통 글에 단 답글이에요."}{" "}
         이 기기에서 쓴 글만 보여요.
       </p>
 
@@ -91,7 +102,7 @@ export default function My() {
         ) : list.length === 0 ? (
           <p className="rounded-xl bg-muted px-4 py-6 text-center text-[13px] leading-relaxed text-muted-foreground">
             {tab === "posts"
-              ? "아직 쓴 글이 없어요. 타임라인이나 홈의 한마디 카드에서 남겨보세요."
+              ? "아직 쓴 글이 없어요. 커뮤니티에서 남겨보세요."
               : "아직 쓴 댓글이 없어요. 차트에서 노래를 누르면 추억을 남길 수 있어요."}
           </p>
         ) : (
@@ -102,9 +113,19 @@ export default function My() {
                 className="flex flex-col gap-1 rounded-2xl border bg-card px-3.5 py-3"
               >
                 <div className="flex items-center gap-2 text-[11.5px]">
-                  <span className="min-w-0 flex-1 truncate font-bold text-primary">
-                    {postContext(m)}
-                  </span>
+                  {threadOf(m) ? (
+                    <Link
+                      to={`/talk/${threadOf(m)}`}
+                      className="min-w-0 flex-1 truncate font-bold text-primary underline-offset-2 hover:underline"
+                    >
+                      {postContext(m)}
+                      {m.kind === "talk" ? ` · 답글 ${m.replies}` : ""} ›
+                    </Link>
+                  ) : (
+                    <span className="min-w-0 flex-1 truncate font-bold text-primary">
+                      {postContext(m)}
+                    </span>
+                  )}
                   <span className="shrink-0 text-ink-icon">
                     {timeAgo(m.createdAt)}
                   </span>
@@ -157,6 +178,12 @@ export default function My() {
           브라우저 데이터를 지우면 이 기기에서 쓴 글을 더 이상 관리할 수 없어요.
         </p>
       </main>
+      <ConfirmDelete
+        what={deleting?.kind === "reply" ? "답글" : "글"}
+        open={!!deleting}
+        onCancel={() => setDeleting(null)}
+        onConfirm={confirmDelete}
+      />
     </MobileShell>
   );
 }
