@@ -15,6 +15,7 @@ const reply = (status: number, body: unknown) =>
 
 const post = (p: Partial<Notification["post"]>): Notification["post"] => ({
   kind: "record",
+  title: null,
   body: "본문",
   songTitle: null,
   rank: null,
@@ -40,12 +41,15 @@ describe("notificationText", () => {
     expect(notificationText(like({ songTitle: "LOVE DIVE" }))).toBe(
       "'LOVE DIVE'에 남긴 추억에 공감 3개가 달렸어요",
     );
-    expect(notificationText(like({ kind: "post", rank: "일병" }, 1))).toBe(
+    expect(notificationText(like({ kind: "post" }, 1))).toBe(
       "내 커뮤니티 글에 공감 1개가 달렸어요",
     );
+    expect(
+      notificationText(like({ kind: "post", title: "휴가 계획" }, 2)),
+    ).toBe("'휴가 계획'에 공감 2개가 달렸어요");
     const answered = like({ kind: "talk" }, 2, "reply");
     expect(notificationText(answered)).toBe(
-      "내 소통 글에 2명이 답글을 달았어요",
+      "내 소통 글에 2명이 댓글을 달았어요",
     );
     expect(notificationHref(answered)).toBe("/talk/1");
     expect(notificationHref(like({ kind: "reply", parentId: "t9" }))).toBe(
@@ -56,7 +60,7 @@ describe("notificationText", () => {
 });
 
 describe("postContext", () => {
-  const base = { kind: "post", song: null, rank: "일병" } as const;
+  const base = { kind: "post", song: null, title: null } as const;
   it("says where a post lives", () => {
     expect(
       postContext({
@@ -64,13 +68,12 @@ describe("postContext", () => {
         song: { key: "a|b", title: "Hype Boy", artist: "NewJeans" },
       }),
     ).toBe("♪ Hype Boy · NewJeans");
-    expect(postContext(base)).toBe("일병 시절 · 커뮤니티 글");
-    expect(postContext({ ...base, kind: "talk", rank: null })).toBe(
-      "선후임 소통 글",
+    expect(postContext(base)).toBe("커뮤니티 글");
+    expect(postContext({ ...base, title: "휴가 계획" })).toBe(
+      "커뮤니티 · 휴가 계획",
     );
-    expect(postContext({ ...base, kind: "reply", rank: null })).toBe(
-      "선후임 소통 답글",
-    );
+    expect(postContext({ ...base, kind: "talk" })).toBe("선후임 소통 글");
+    expect(postContext({ ...base, kind: "reply" })).toBe("댓글");
   });
 });
 
@@ -105,8 +108,9 @@ describe("activity API", () => {
     await apiMemoryStore.feed("일병", "c");
     await talkApi.list({ reserve: true });
     await apiMemoryStore.addPost({
+      title: "제목",
       body: "그때",
-      rank: "일병",
+      rank: null,
       author: { cohortMonth: "2021-03", branch: "육군", isReserve: true },
     });
     expect(fetch.mock.calls.map((c) => c[0])).toEqual([
@@ -124,8 +128,9 @@ describe("activity API", () => {
       ),
     ).toEqual({
       kind: "post",
+      title: "제목",
       body: "그때",
-      rank: "일병",
+      rank: null,
       cohortMonth: "2021-03",
       branch: "육군",
       isReserve: true,

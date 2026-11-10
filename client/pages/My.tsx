@@ -14,7 +14,11 @@ type Tab = "posts" | "comments";
 
 /** The 소통 thread a talk or reply belongs to. */
 const threadOf = (m: Memory) =>
-  m.kind === "talk" ? m.id : m.kind === "reply" ? m.parentId : null;
+  m.kind === "talk" || m.kind === "post"
+    ? m.id
+    : m.kind === "reply"
+      ? m.parentId
+      : null;
 
 /**
  * 내 활동: everything written from this device. 글 are 커뮤니티 글 and
@@ -79,7 +83,7 @@ export default function My() {
       <p className="px-4 pb-2 text-xs leading-normal text-ink-icon">
         {tab === "posts"
           ? "커뮤니티 글과 선후임 소통 글이에요."
-          : "노래에 남긴 추억과 소통 글에 단 답글이에요."}{" "}
+          : "노래에 남긴 추억과 글에 단 댓글이에요."}{" "}
         이 기기에서 쓴 글만 보여요.
       </p>
 
@@ -119,7 +123,10 @@ export default function My() {
                       className="min-w-0 flex-1 truncate font-bold text-primary underline-offset-2 hover:underline"
                     >
                       {postContext(m)}
-                      {m.kind === "talk" ? ` · 답글 ${m.replies}` : ""} ›
+                      {m.kind === "talk" || m.kind === "post"
+                        ? ` · 댓글 ${m.replies}`
+                        : ""}{" "}
+                      ›
                     </Link>
                   ) : (
                     <span className="min-w-0 flex-1 truncate font-bold text-primary">
@@ -179,7 +186,7 @@ export default function My() {
         </p>
       </main>
       <ConfirmDelete
-        what={deleting?.kind === "reply" ? "답글" : "글"}
+        what={deleting?.kind === "reply" ? "댓글" : "글"}
         open={!!deleting}
         onCancel={() => setDeleting(null)}
         onConfirm={confirmDelete}

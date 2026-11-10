@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import { Check, ChevronDown, MessagesSquare, PenLine } from "lucide-react";
 import { toast } from "sonner";
@@ -7,6 +7,7 @@ import BottomNav from "@/components/ipdae/BottomNav";
 import ConfirmDelete from "@/components/ipdae/ConfirmDelete";
 import MemoryItem from "@/components/ipdae/MemoryItem";
 import PostComposer from "@/components/ipdae/PostComposer";
+import SongPlayer from "@/components/ipdae/SongPlayer";
 import TalkItem from "@/components/ipdae/TalkItem";
 import {
   Drawer,
@@ -20,12 +21,14 @@ import { useTalks } from "@/hooks/useTalks";
 import { dLabel, ddayStatus } from "@/lib/dday";
 import {
   COMMUNITY_MAX_LENGTH,
+  TITLE_MAX_LENGTH,
   type MemoryAuthor,
   cohortLabel,
   cohortMonthOf,
 } from "@/lib/memories";
 import { TALK_MAX_LENGTH } from "@/lib/talks";
-import { RANKS, type Rank, type ServicePlan } from "@/lib/service";
+import { RANKS, type ServicePlan } from "@/lib/service";
+import type { SongRef } from "@shared/posts";
 import { cn } from "@/lib/utils";
 
 const RANK_FILTERS = [...RANKS, "예비역"] as const;
@@ -74,7 +77,7 @@ export default function Community() {
       {talk ? (
         <TalkSpace plan={plan} status={status} search={search} />
       ) : (
-        <StoryFeed plan={plan} status={status} />
+        <StoryFeed plan={plan} status={status} search={search} />
       )}
 
       <BottomNav />
@@ -91,23 +94,28 @@ function authorOf(plan: ServicePlan, status: Status): MemoryAuthor {
 }
 
 /** 이야기: 커뮤니티 글 and song memories. */
-function StoryFeed({ plan, status }: { plan: ServicePlan; status: Status }) {
+function StoryFeed({
+  plan,
+  status,
+  search,
+}: {
+  plan: ServicePlan;
+  status: Status;
+  search: string;
+}) {
   const [rank, setRank] = useState<RankFilter | null>(null);
+  // The song memory being listened to
+  const [song, setSong] = useState<SongRef | null>(null);
+  const closeSong = useCallback(() => setSong(null), []);
   const [picker, setPicker] = useState(false);
   const feed = useCommunityFeed(rank);
   const [writing, setWriting] = useState(false);
-  const [about, setAbout] = useState<Rank | null>(null);
   // Asked in a dialog first (see ConfirmDelete)
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  // Ranks one can write about: the ones already reached
-  const reached: Rank[] =
-    status.status === "serving"
-      ? RANKS.slice(0, RANKS.indexOf(status.current.rank) + 1)
-      : status.status === "done"
-        ? [...RANKS]
-        : [];
-  const aboutRank = about ?? reached[reached.length - 1] ?? null;
+  const canWrite = status.status !== "notYet";
+  // A post carries the writer's rank now (none for 예비역)
+  const myRank = status.status === "serving" ? status.current.rank : null;
   const author = authorOf(plan, status);
   const openComposer = () => {
     setWriting(true);
@@ -118,12 +126,13 @@ function StoryFeed({ plan, status }: { plan: ServicePlan; status: Status }) {
     rank === "예비역"
       ? "예비역이 쓴 글만 보여요."
       : rank
-        ? `${rank} 시절 이야기만 보여요.`
-        : "모든 계급의 글과 노래 추억이 최신순으로 보여요.";
+        ? `${rank} 때 쓴 글과 ${rank} 시절 노래 추억만 보여요.`
+        : "모든 글과 노래 추억이 최신순으로 보여요. 노래를 누르면 들을 수 있어요.";
   const onError = (err: Error) => toast(err.message);
 
   return (
     <>
+      {song && <SongPlayer song={song} onClose={closeSong} />}
       <div
         className="flex flex-wrap gap-1.5 px-4 pb-2.5 pt-3"
         role="group"
@@ -140,48 +149,27 @@ function StoryFeed({ plan, status }: { plan: ServicePlan; status: Status }) {
       <p className="px-4 pb-2 text-xs leading-normal text-ink-icon">{note}</p>
 
       <main className="flex flex-1 flex-col gap-2 px-4 pb-24">
-        {writing && aboutRank && (
-          <section className="flex flex-col gap-2 rounded-2xl border-2 border-primary bg-card px-3 pb-3 pt-3">
-            <div className="flex flex-col gap-1.5 px-1">
-              <span className="text-[12.5px] font-bold">
-                어느 계급 시절 이야기인가요?
-              </span>
-              <div className="flex gap-1" role="group" aria-label="계급">
-                {reached.map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    aria-pressed={r === aboutRank}
-                    onClick={() => setAbout(r)}
-                    className={cn(
-                      "h-9 flex-1 rounded-xl border text-[13px] font-bold",
-                      r === aboutRank
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border bg-card text-muted-foreground",
-                    )}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
-            </div>
+        {writing && canWrite && (
+          <section className="rounded-2xl border-2 border-primary bg-card px-3 pb-3 pt-3">
             <PostComposer
               id="community-composer"
-              label={`${aboutRank} 시절 이야기`}
-              hint={`${cohortLabel(author.cohortMonth)} · ${aboutRank} 시절${author.isReserve ? " · 예비역" : ""}으로 표시돼요`}
-              placeholder="그때 생활관에서 있었던 일, 지금 하고 싶은 말…"
+              label="자유글"
+              hint={`${cohortLabel(author.cohortMonth)} · ${myRank ?? "예비역"}으로 표시돼요`}
+              titleMaxLength={TITLE_MAX_LENGTH}
+              titlePlaceholder="제목"
+              placeholder="생활관 이야기, 요즘 듣는 노래, 하고 싶은 말…"
               maxLength={COMMUNITY_MAX_LENGTH}
               submitLabel="올리기"
               saving={feed.add.isPending}
               onCancel={() => setWriting(false)}
-              onSubmit={(body, done) =>
+              onSubmit={(body, done, title) =>
                 feed.add.mutate(
-                  { body, rank: aboutRank, author },
+                  { title, body, rank: myRank, author },
                   {
                     onSuccess: () => {
                       done();
                       setWriting(false);
-                      if (rank && rank !== aboutRank) setRank(null);
+                      setRank(null);
                       toast("글을 올렸어요");
                     },
                     onError,
@@ -221,15 +209,21 @@ function StoryFeed({ plan, status }: { plan: ServicePlan; status: Status }) {
           </section>
         ) : (
           <ul className="flex flex-col gap-2" aria-label="커뮤니티 글">
-            {feed.posts.map((m) => (
-              <MemoryItem
-                key={m.id}
-                memory={m}
-                showSong
-                onLike={() => feed.like.mutate(m.id, { onError })}
-                onDelete={() => setDeleting(m.id)}
-              />
-            ))}
+            {feed.posts.map((m) =>
+              m.kind === "post" ? (
+                // 커뮤니티 글 open into their page with 댓글
+                <TalkItem key={m.id} talk={m} search={search} />
+              ) : (
+                <MemoryItem
+                  key={m.id}
+                  memory={m}
+                  showSong
+                  onPlay={m.song ? () => setSong(m.song) : undefined}
+                  onLike={() => feed.like.mutate(m.id, { onError })}
+                  onDelete={() => setDeleting(m.id)}
+                />
+              ),
+            )}
             {feed.hasMore && (
               <li>
                 <button
@@ -248,7 +242,7 @@ function StoryFeed({ plan, status }: { plan: ServicePlan; status: Status }) {
         )}
       </main>
 
-      {!writing && reached.length > 0 && (
+      {!writing && canWrite && (
         <WriteButton onClick={openComposer} controls="community-composer" />
       )}
 
@@ -256,7 +250,7 @@ function StoryFeed({ plan, status }: { plan: ServicePlan; status: Status }) {
         <DrawerContent className="mx-auto max-w-[430px] px-4 pb-8">
           <DrawerTitle className="pt-4 text-base">계급 선택</DrawerTitle>
           <DrawerDescription className="pb-3 text-xs">
-            그 계급 시절 이야기만 보여요.
+            그 계급 때 쓴 글과 그 시절 노래 추억만 보여요.
           </DrawerDescription>
           <ul className="flex flex-col gap-1.5">
             {RANK_FILTERS.map((r) => (
@@ -357,14 +351,17 @@ function TalkSpace({
                   ? "그때 이랬으면 좋았겠다 싶은 것, 응원 한마디…"
                   : "휴가, 보직, 전역 준비… 선배들에게 묻고 싶은 것"
               }
+              titleMaxLength={TITLE_MAX_LENGTH}
+              titlePlaceholder="제목"
               maxLength={TALK_MAX_LENGTH}
               submitLabel="올리기"
               saving={talks.ask.isPending}
               autoFocus
               onCancel={() => setWriting(false)}
-              onSubmit={(body, done) =>
+              onSubmit={(body, done, title) =>
                 talks.ask.mutate(
                   {
+                    title,
                     body,
                     rank:
                       status.status === "serving" ? status.current.rank : null,
@@ -479,15 +476,15 @@ function WriteButton({
   controls: string;
 }) {
   return (
-    <div className="pointer-events-none sticky bottom-[calc(56px+max(env(safe-area-inset-bottom),6px))] z-10 px-4 pb-3">
+    <div className="pointer-events-none sticky bottom-[calc(56px+max(env(safe-area-inset-bottom),6px))] z-10 flex justify-end px-4 pb-3">
       <button
         type="button"
         onClick={onClick}
         aria-controls={controls}
-        className="pointer-events-auto flex h-12 w-full items-center justify-center gap-1.5 rounded-[14px] bg-primary text-[14.5px] font-bold text-primary-foreground shadow-[0_4px_14px_rgba(26,29,22,0.18)]"
+        className="pointer-events-auto flex h-10 items-center gap-1 rounded-full bg-primary pl-3 pr-3.5 text-[13px] font-bold text-primary-foreground shadow-[0_4px_14px_rgba(26,29,22,0.18)]"
       >
-        <PenLine className="size-4" strokeWidth={2.2} aria-hidden="true" />글
-        쓰기
+        <PenLine className="size-3.5" strokeWidth={2.4} aria-hidden="true" />
+        글쓰기
       </button>
     </div>
   );

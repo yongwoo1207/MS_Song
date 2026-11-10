@@ -30,6 +30,7 @@ export function useTalks({
   });
   const ask = useMutation({
     mutationFn: (input: {
+      title: string;
       body: string;
       rank: PostRank | null;
       author: MemoryAuthor;

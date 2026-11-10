@@ -42,7 +42,7 @@ export default function Notifications() {
           </div>
         ) : notifications.length === 0 ? (
           <p className="rounded-xl bg-muted px-4 py-6 text-center text-[13px] leading-relaxed text-muted-foreground">
-            아직 알림이 없어요. 내 글에 공감이나 답글이 달리면 여기로
+            아직 알림이 없어요. 내 글에 공감이나 댓글이 달리면 여기로
             알려드려요.
           </p>
         ) : (

@@ -12,7 +12,7 @@
  *                                    커뮤니티 글 and song memories, newest first
  *   GET    /api/posts?kind=talk[&reserve=0|1][&before=<cursor>]
  *                                    선후임 소통 글, newest first
- *   GET    /api/posts/:id            a 소통 글 with its replies
+ *   GET    /api/posts/:id            a 커뮤니티 글 or 소통 글 with its replies
  *   POST   /api/posts                write a song memory (NewSongRecord),
  *                                    a 커뮤니티 글 (NewCommunityPost),
  *                                    a 소통 글 (NewTalk) or a reply (NewReply)
@@ -45,6 +45,7 @@ import {
   COMMUNITY_MAX_LENGTH,
   REPORT_REASONS,
   TALK_MAX_LENGTH,
+  TITLE_MAX_LENGTH,
 } from "../shared/posts";
 
 interface Env {
@@ -92,15 +93,22 @@ const Author = {
   branch: z.enum(POST_BRANCHES),
   isReserve: z.boolean(),
 };
-/** A 커뮤니티 글: no song, filed under the rank whose 시절 it is about. */
+/** Title of a 커뮤니티 글 or 소통 글. */
+const Title = z
+  .string()
+  .transform((s) => s.trim())
+  .pipe(z.string().min(1, "제목을 입력해주세요").max(TITLE_MAX_LENGTH));
+/** A 커뮤니티 글: a free post with a title. `rank`: the writer's now. */
 const NewCommunityPost = z.object({
   kind: z.literal("post"),
+  title: Title,
   body: text(COMMUNITY_MAX_LENGTH),
-  rank: z.enum(POST_RANKS),
+  rank: z.enum(POST_RANKS).nullable(),
   ...Author,
 });
 const NewTalk = z.object({
   kind: z.literal("talk"),
+  title: Title,
   body: text(TALK_MAX_LENGTH),
   rank: z.enum(POST_RANKS).nullable(),
   ...Author,
@@ -177,6 +185,7 @@ async function readJson(req: Request) {
 interface PostRow {
   id: string;
   kind: ApiPost["kind"];
+  title: string | null;
   body: string;
   song_key: string | null;
   song_title: string | null;
@@ -199,6 +208,7 @@ interface PostRow {
 const toApi = (r: PostRow, me: string | null, asker?: string): ApiPost => ({
   id: r.id,
   kind: r.kind,
+  title: r.title,
   body: r.body,
   song: r.song_key
     ? { key: r.song_key, title: r.song_title!, artist: r.song_artist! }
@@ -317,7 +327,8 @@ function listTalks(req: Request, env: Env, url: URL) {
 async function getThread(req: Request, env: Env, id: string) {
   const me = await authorOf(req);
   const talk = await env.DB.prepare(
-    `${SELECT_POST} WHERE p.id = ?2 AND p.kind = 'talk' AND p.status = 'visible'`,
+    `${SELECT_POST} WHERE p.id = ?2 AND p.kind IN ('talk', 'post')
+       AND p.status = 'visible'`,
   )
     .bind(me ?? "", id)
     .first<PostRow>();
@@ -474,6 +485,7 @@ interface NotificationRow {
   unread: number;
   last_at: string;
   kind: ApiPost["kind"];
+  title: string | null;
   body: string;
   song_title: string | null;
   rank: ApiPost["rank"];
@@ -500,7 +512,7 @@ async function listNotifications(req: Request, env: Env, url: URL) {
   const { results } = await env.DB.prepare(
     `SELECT n.type, n.post_id, COUNT(*) AS count,
             SUM(n.read_at IS NULL) AS unread, MAX(n.created_at) AS last_at,
-            p.kind, p.body, p.song_title, p.rank, p.about_month,
+            p.kind, p.title, p.body, p.song_title, p.rank, p.about_month,
             p.parent_id
      FROM notifications n
      JOIN posts p ON p.id = n.post_id
@@ -519,6 +531,7 @@ async function listNotifications(req: Request, env: Env, url: URL) {
     lastAt: r.last_at,
     post: {
       kind: r.kind,
+      title: r.title,
       body: r.body,
       songTitle: r.song_title,
       rank: r.rank,
@@ -623,7 +636,7 @@ async function createPost(req: Request, env: Env) {
   throw new HttpError(400, "잘못된 요청이에요");
 }
 
-/** A 커뮤니티 글 or a 소통 글: body, rank and who wrote it. */
+/** A 커뮤니티 글 or a 소통 글: (title,) body, rank and who wrote it. */
 async function createPlain(
   env: Env,
   req: Request,
@@ -633,13 +646,14 @@ async function createPlain(
   await checkLimits(env.DB, me);
   const id = crypto.randomUUID();
   await env.DB.prepare(
-    `INSERT INTO posts (id, kind, body, rank, author_id, cohort_month, branch,
-                        is_reserve)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO posts (id, kind, title, body, rank, author_id, cohort_month,
+                        branch, is_reserve)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
       input.kind,
+      input.title,
       input.body,
       input.rank,
       me,
@@ -658,7 +672,8 @@ async function createReply(env: Env, req: Request, raw: unknown) {
   const input = parse(NewReply, raw);
   const me = await writer(req, env.DB);
   const talk = await env.DB.prepare(
-    "SELECT author_id FROM posts WHERE id = ? AND kind = 'talk' AND status = 'visible'",
+    `SELECT author_id FROM posts
+     WHERE id = ? AND kind IN ('talk', 'post') AND status = 'visible'`,
   )
     .bind(input.parentId)
     .first<{ author_id: string }>();

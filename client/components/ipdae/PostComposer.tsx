@@ -15,6 +15,8 @@ export default function PostComposer({
   submitLabel,
   saving,
   autoFocus = true,
+  titleMaxLength,
+  titlePlaceholder = "제목",
   onCancel,
   onSubmit,
 }: {
@@ -28,19 +30,35 @@ export default function PostComposer({
   submitLabel: string;
   saving: boolean;
   autoFocus?: boolean;
+  /** Set to ask for a title above the text */
+  titleMaxLength?: number;
+  titlePlaceholder?: string;
   onCancel?: () => void;
-  onSubmit: (body: string, done: () => void) => void;
+  onSubmit: (body: string, done: () => void, title: string) => void;
 }) {
+  const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [error, setError] = useState("");
+  const withTitle = titleMaxLength !== undefined;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (withTitle && !title.trim()) {
+      setError("제목을 입력해주세요");
+      return;
+    }
     if (!text.trim()) {
       setError("내용을 입력해주세요");
       return;
     }
-    onSubmit(text, () => setText(""));
+    onSubmit(
+      text,
+      () => {
+        setText("");
+        setTitle("");
+      },
+      title.trim(),
+    );
   };
 
   return (
@@ -49,7 +67,10 @@ export default function PostComposer({
       onSubmit={submit}
       className="flex flex-col gap-1.5 rounded-xl bg-background px-3 pb-2.5 pt-2.5"
     >
-      <label htmlFor={`${id}-text`} className="text-[12.5px] font-bold">
+      <label
+        htmlFor={withTitle ? `${id}-title` : `${id}-text`}
+        className="text-[12.5px] font-bold"
+      >
         {label}
       </label>
       {help && (
@@ -59,9 +80,25 @@ export default function PostComposer({
         <ShieldAlert className="size-3.5 shrink-0" aria-hidden="true" />
         부대명, 위치, 일정, 실명은 쓰지 말아주세요
       </p>
+      {withTitle && (
+        <input
+          id={`${id}-title`}
+          autoFocus={autoFocus}
+          value={title}
+          maxLength={titleMaxLength}
+          onChange={(e) => {
+            setTitle(e.target.value);
+            if (error) setError("");
+          }}
+          placeholder={titlePlaceholder}
+          aria-invalid={!!error && !title.trim()}
+          className="h-10 rounded-xl border border-input bg-field px-3 text-sm font-bold outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+        />
+      )}
       <textarea
         id={`${id}-text`}
-        autoFocus={autoFocus}
+        aria-label={withTitle ? "내용" : undefined}
+        autoFocus={autoFocus && !withTitle}
         value={text}
         maxLength={maxLength}
         rows={4}

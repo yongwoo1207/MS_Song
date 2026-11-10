@@ -19,7 +19,7 @@ export default function ConfirmDelete({
   onCancel,
   onConfirm,
 }: {
-  /** "답글", "글" … */
+  /** "댓글", "글" … */
   what: string;
   open: boolean;
   onCancel: () => void;
@@ -52,7 +52,7 @@ export default function ConfirmDelete({
   );
 }
 
-/** "글" → "글을", "답글" → "답글을", "노래" → "노래를" */
+/** "글" → "글을", "댓글" → "댓글을", "노래" → "노래를" */
 export function eulReul(word: string) {
   const code = word.charCodeAt(word.length - 1) - 0xac00;
   const final = code >= 0 && code <= 11171 && code % 28 !== 0;

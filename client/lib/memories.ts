@@ -46,10 +46,11 @@ export interface MemoryPage {
 
 export const MEMORY_PAGE = 20;
 
-/** A 커뮤니티 글: which 시절 it is about, no song. */
+/** A 커뮤니티 글: a free post with a title, no song. */
 export interface NewPost {
+  title: string;
   body: string;
-  rank: PostRank;
+  rank: PostRank | null; // the writer's rank now (null for 예비역)
   author: MemoryAuthor;
 }
 
@@ -74,7 +75,7 @@ export interface MemoryStore {
 }
 
 export const MEMORY_MAX_LENGTH = RECORD_MAX_LENGTH;
-export { COMMUNITY_MAX_LENGTH } from "@shared/posts";
+export { COMMUNITY_MAX_LENGTH, TITLE_MAX_LENGTH } from "@shared/posts";
 
 /** fetch against the Worker API with the device token; throws its error. */
 export async function apiCall<T>(
@@ -121,10 +122,10 @@ export const apiMemoryStore: MemoryStore = {
     const data = await call<{ posts: Memory[]; next?: string | null }>(`?${q}`);
     return { posts: data.posts, next: data.next ?? null };
   },
-  async addPost({ body, rank, author }) {
+  async addPost({ title, body, rank, author }) {
     const data = await call<{ post: Memory }>("", {
       method: "POST",
-      body: JSON.stringify({ kind: "post", body, rank, ...author }),
+      body: JSON.stringify({ kind: "post", title, body, rank, ...author }),
     });
     return data.post;
   },
@@ -198,12 +199,15 @@ export function monthLabel(month: string) {
   return `${y}년 ${Number(m)}월`;
 }
 
-/** Where a post lives, e.g. "♪ LOVE DIVE · IVE", "일병 시절 · 커뮤니티 글". */
-export function postContext(p: Pick<Memory, "kind" | "song" | "rank">): string {
+/** Where a post lives, e.g. "♪ LOVE DIVE · IVE", "커뮤니티 · 휴가 계획". */
+export function postContext(
+  p: Pick<Memory, "kind" | "song" | "title">,
+): string {
   if (p.song) return `♪ ${p.song.title} · ${p.song.artist}`;
-  if (p.kind === "post") return `${p.rank ?? ""} 시절 · 커뮤니티 글`;
+  if (p.kind === "post")
+    return p.title ? `커뮤니티 · ${p.title}` : "커뮤니티 글";
   if (p.kind === "talk") return "선후임 소통 글";
-  if (p.kind === "reply") return "선후임 소통 답글";
+  if (p.kind === "reply") return "댓글";
   return "";
 }
 

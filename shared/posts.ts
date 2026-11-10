@@ -4,7 +4,7 @@
  *   record = 노래 추억, a memory under a song
  *   post   = 커뮤니티 글, on no song
  *   talk   = 선후임 소통 글 between 현역 and 예비역
- *   reply  = 답글 under a talk
+ *   reply  = 댓글 under a post or talk
  */
 
 export const POST_RANKS = ["이병", "일병", "상병", "병장"] as const;
@@ -15,6 +15,7 @@ export const RECORD_MAX_LENGTH = 300;
 export const TALK_MAX_LENGTH = 500;
 export const REPLY_MAX_LENGTH = 300;
 export const COMMUNITY_MAX_LENGTH = 500;
+export const TITLE_MAX_LENGTH = 40;
 
 export type PostRank = (typeof POST_RANKS)[number];
 export type PostBranch = (typeof POST_BRANCHES)[number];
@@ -52,11 +53,12 @@ export interface NewSongRecord extends AuthorFields {
   aboutMonth: string; // 'YYYY-MM' chart month the memory files under
 }
 
-/** Body of POST /api/posts for a 커뮤니티 글 (no song). `rank`: which 시절. */
+/** Body of POST /api/posts for a 커뮤니티 글: a free post, title and body. */
 export interface NewCommunityPost extends AuthorFields {
   kind: "post";
+  title: string;
   body: string;
-  rank: PostRank;
+  rank: PostRank | null; // the writer's rank now (null for 예비역)
 }
 
 /**
@@ -65,6 +67,7 @@ export interface NewCommunityPost extends AuthorFields {
  */
 export interface NewTalk extends AuthorFields {
   kind: "talk";
+  title: string;
   body: string;
   rank: PostRank | null; // the writer's rank now (null for 예비역)
 }
@@ -80,6 +83,8 @@ export interface NewReply extends AuthorFields {
 export interface ApiPost {
   id: string;
   kind: "record" | "post" | "talk" | "reply";
+  /** 커뮤니티 글 only; older ones have none. */
+  title: string | null;
   body: string;
   song: SongRef | null;
   rank: PostRank | null;
@@ -116,6 +121,7 @@ export interface ApiNotification {
   lastAt: string; // ISO, the latest one
   post: {
     kind: ApiPost["kind"];
+    title: string | null;
     body: string;
     songTitle: string | null;
     rank: PostRank | null;

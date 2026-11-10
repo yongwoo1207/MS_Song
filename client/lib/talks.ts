@@ -43,6 +43,7 @@ export const talkApi = {
     return apiCall<Thread>(`/api/posts/${encodeURIComponent(id)}`);
   },
   async ask(input: {
+    title: string;
     body: string;
     rank: PostRank | null;
     author: MemoryAuthor;
@@ -51,6 +52,7 @@ export const talkApi = {
       method: "POST",
       body: JSON.stringify({
         kind: "talk",
+        title: input.title,
         body: input.body,
         rank: input.rank,
         ...input.author,

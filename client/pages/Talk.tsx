@@ -21,8 +21,8 @@ import { REPLY_MAX_LENGTH } from "@/lib/talks";
 import { cn } from "@/lib/utils";
 
 /**
- * One 선후임 소통 글 and its replies. Anyone serving or discharged can
- * reply; before 입대 it is read only.
+ * One 커뮤니티 글 or 선후임 소통 글 with its 댓글. Anyone serving or
+ * discharged can comment; before 입대 it is read only.
  */
 export default function Talk() {
   const { id } = useParams();
@@ -44,6 +44,7 @@ export default function Talk() {
 
   const reserve = status?.status === "done";
   const canReply = !!post && !!status && status.status !== "notYet";
+  const community = post?.kind === "post";
   const author: MemoryAuthor | null = plan
     ? {
         cohortMonth: cohortMonthOf(plan.enlist),
@@ -62,9 +63,12 @@ export default function Talk() {
     remove.mutate(m.id, {
       onSuccess: () => {
         toast("지웠어요");
-        if (m.kind !== "talk") return;
+        if (m.kind === "reply") return;
         if (window.history.length > 1) navigate(-1);
-        else navigate("/community/talk", { replace: true });
+        else
+          navigate(m.kind === "post" ? "/community" : "/community/talk", {
+            replace: true,
+          });
       },
       onError,
     });
@@ -72,7 +76,7 @@ export default function Talk() {
 
   return (
     <MobileShell>
-      <SubHeader title="선후임 소통" />
+      <SubHeader title={community ? "커뮤니티" : "선후임 소통"} />
       <main className="flex flex-1 flex-col gap-3 px-4 pb-8">
         {isLoading ? (
           <p className="py-8 text-center text-[13px] text-muted-foreground">
@@ -100,6 +104,11 @@ export default function Talk() {
                 <span className="flex-1" />
                 <span className="shrink-0">{timeAgo(post.createdAt)}</span>
               </div>
+              {post.title && (
+                <h2 className="break-words text-[17px] font-bold leading-snug">
+                  {post.title}
+                </h2>
+              )}
               <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">
                 {post.body}
               </p>
@@ -111,17 +120,17 @@ export default function Talk() {
             </article>
 
             <h2 className="px-1 text-[13px] font-bold">
-              답글{" "}
+              댓글{" "}
               <span className="font-mono text-primary">{replies.length}</span>
             </h2>
             {replies.length === 0 ? (
               <p className="rounded-xl bg-muted px-4 py-5 text-center text-[13px] leading-relaxed text-muted-foreground">
                 {post.mine
-                  ? "아직 답글이 없어요. 답글이 달리면 알림으로 알려드려요."
-                  : "아직 답글이 없어요. 첫 번째로 답해주세요."}
+                  ? "아직 댓글이 없어요. 댓글이 달리면 알림으로 알려드려요."
+                  : "아직 댓글이 없어요. 첫 번째로 남겨주세요."}
               </p>
             ) : (
-              <ul className="flex flex-col gap-2" aria-label="답글">
+              <ul className="flex flex-col gap-2" aria-label="댓글">
                 {replies.map((r) => (
                   <li
                     key={r.id}
@@ -162,24 +171,28 @@ export default function Talk() {
             {canReply && author ? (
               <PostComposer
                 id="reply-composer"
-                label={post.mine ? "덧붙이기" : "답하기"}
+                label="댓글 달기"
                 help={
-                  post.mine
-                    ? "답해준 분들에게 고마움이나 근황을 남겨보세요."
-                    : reserve
-                      ? "그 시절의 나에게 해주고 싶던 말을 남겨주세요."
-                      : "같은 시기를 지나는 사람으로서 한마디 남겨주세요."
+                  community
+                    ? undefined
+                    : post.mine
+                      ? "답해준 분들에게 고마움이나 근황을 남겨보세요."
+                      : reserve
+                        ? "그 시절의 나에게 해주고 싶던 말을 남겨주세요."
+                        : "같은 시기를 지나는 사람으로서 한마디 남겨주세요."
                 }
                 hint={`${cohortLabel(author.cohortMonth)} · ${author.branch} · ${reserve ? "예비역" : "현역"}으로 표시돼요`}
                 placeholder={
-                  post.mine
-                    ? "답 고마워요. 덕분에…"
-                    : reserve
-                      ? "저도 그랬어요. 지나고 보니…"
-                      : "저도 요즘 그래요…"
+                  community
+                    ? "댓글을 남겨주세요"
+                    : post.mine
+                      ? "답 고마워요. 덕분에…"
+                      : reserve
+                        ? "저도 그랬어요. 지나고 보니…"
+                        : "저도 요즘 그래요…"
                 }
                 maxLength={REPLY_MAX_LENGTH}
-                submitLabel="답글 남기기"
+                submitLabel="댓글 남기기"
                 saving={reply.isPending}
                 autoFocus={false}
                 onSubmit={(body, done) =>
@@ -188,7 +201,7 @@ export default function Talk() {
                     {
                       onSuccess: () => {
                         done();
-                        toast("답글을 남겼어요");
+                        toast("댓글을 남겼어요");
                       },
                       onError,
                     },
@@ -197,14 +210,14 @@ export default function Talk() {
               />
             ) : (
               <p className="px-1 text-center text-xs text-ink-icon">
-                입대하면 답글을 남길 수 있어요.
+                입대하면 댓글을 남길 수 있어요.
               </p>
             )}
           </>
         )}
       </main>
       <ConfirmDelete
-        what={deleting?.kind === "talk" ? "글" : "답글"}
+        what={deleting?.kind === "reply" ? "댓글" : "글"}
         open={!!deleting}
         onCancel={() => setDeleting(null)}
         onConfirm={confirmDelete}

@@ -9,7 +9,7 @@ export function authorLine(m: Memory) {
   return `${cohortLabel(m.cohortMonth)} · ${m.branch} · ${role}`;
 }
 
-/** A 소통 글 in a list: who wrote it, the start of it, how many replied. */
+/** A 커뮤니티 글 or 소통 글 in a list: who, title, the start of it, 댓글 count. */
 export default function TalkItem({
   talk: m,
   search = "",
@@ -39,7 +39,17 @@ export default function TalkItem({
             <span className="flex-1" />
             <span className="shrink-0">{timeAgo(m.createdAt)}</span>
           </span>
-          <span className="line-clamp-2 whitespace-pre-wrap break-words text-[13.5px] leading-relaxed">
+          {m.title && (
+            <span className="line-clamp-1 break-words text-[14.5px] font-bold leading-snug">
+              {m.title}
+            </span>
+          )}
+          <span
+            className={cn(
+              "whitespace-pre-wrap break-words text-[13.5px] leading-relaxed",
+              m.title ? "line-clamp-1 text-muted-foreground" : "line-clamp-2",
+            )}
+          >
             {m.body}
           </span>
           <span
@@ -53,7 +63,7 @@ export default function TalkItem({
               strokeWidth={2.2}
               aria-hidden="true"
             />
-            {m.replies > 0 ? `답글 ${m.replies}` : "아직 답글이 없어요"}
+            {m.replies > 0 ? `댓글 ${m.replies}` : "아직 댓글이 없어요"}
           </span>
         </span>
         <ChevronRight
