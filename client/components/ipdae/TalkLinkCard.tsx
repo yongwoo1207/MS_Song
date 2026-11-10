@@ -17,7 +17,7 @@ const COPY = {
 } as const;
 
 /**
- * Home card that opens the 선후임 소통 space in 커뮤니티: 현역 talk to
+ * Home card that opens 커뮤니티: 현역 talk to
  * 예비역 선배, 예비역 to 현역 후임, 입대 예정자 ask both.
  */
 export default function TalkLinkCard({ who }: { who: keyof typeof COPY }) {
@@ -25,7 +25,7 @@ export default function TalkLinkCard({ who }: { who: keyof typeof COPY }) {
   const { search } = useLocation();
   return (
     <Link
-      to={`/community/talk${search}`}
+      to={`/community${search}`}
       className="flex items-center gap-3 rounded-[18px] border bg-card px-4 py-3.5"
     >
       <span

@@ -11,14 +11,7 @@ import SongPlayer from "@/components/ipdae/SongPlayer";
 import TalkItem from "@/components/ipdae/TalkItem";
 import { useServicePlan } from "@/hooks/useServicePlan";
 import { useCommunityFeed } from "@/hooks/useCommunityFeed";
-import {
-  type BoardTopic,
-  TOPICS,
-  WRITE_TOPICS,
-  type WriteKind,
-  kindLabel,
-  topicOf,
-} from "@/lib/boards";
+import { type BoardTopic, TOPICS, topicOf } from "@/lib/boards";
 import { dLabel, ddayStatus } from "@/lib/dday";
 import {
   COMMUNITY_MAX_LENGTH,
@@ -27,21 +20,19 @@ import {
   authorLine,
   writerOf,
 } from "@/lib/memories";
-import { TALK_MAX_LENGTH } from "@/lib/talks";
 import type { ServicePlan } from "@/lib/service";
-import { FEED_TOPICS, type SongRef } from "@shared/posts";
+import type { SongRef } from "@shared/posts";
 import { cn } from "@/lib/utils";
 
 type Status = ReturnType<typeof ddayStatus>;
 type Who = "reserve" | "serving" | "pre";
 
 /**
- * 커뮤니티: one board with everything, newest first: 이야기 (free posts),
- * 음악 (댓글 left under songs; tapping the song plays it) and 선후임 소통
- * (현역, 예비역 and 입대 예정자 asking each other). Topic chips narrow it,
- * each with its own address (/community/music …) so home cards can link
- * to one; topics are listed in lib/boards.ts. A 계급 chip narrows by who
- * wrote it.
+ * 커뮤니티: one board with everything, newest first: 글 (현역, 예비역 and
+ * 입대 예정자 write and 댓글 under each other's) and 음악 (댓글 left under
+ * songs; tapping the song plays it). Topic chips narrow it, each with its
+ * own address (/community/music); topics are listed in lib/boards.ts.
+ * Older 선후임 소통 글 (kind talk) still show as 글.
  */
 export default function Community() {
   const { plan } = useServicePlan();
@@ -64,7 +55,7 @@ export default function Community() {
         <span className="font-mono text-[11px] text-ink-icon">{me}</span>
         <h1 className="text-lg font-bold">커뮤니티</h1>
       </header>
-      {/* Keyed so the 글쓰기 box starts on this topic's 말머리 */}
+      {/* Keyed so each topic starts with a closed 글쓰기 box */}
       <Board key={topic.key} topic={topic} plan={plan} status={status} />
       <BottomNav />
     </MobileShell>
@@ -98,7 +89,6 @@ function Board({
   const [song, setSong] = useState<SongRef | null>(null);
   const closeSong = useCallback(() => setSong(null), []);
   const [writing, setWriting] = useState(false);
-  const [kind, setKind] = useState<WriteKind>(topic.writes);
   // Asked in a dialog first (see ConfirmDelete)
   const [deleting, setDeleting] = useState<Memory | null>(null);
 
@@ -113,13 +103,11 @@ function Board({
     navigate(`${t.path}${search}`, { replace: true });
 
   const placeholder =
-    kind === "post"
-      ? "생활관 이야기, 요즘 듣는 노래, 하고 싶은 말…"
-      : who === "reserve"
-        ? "후임들에게: 그때 이랬으면 좋았겠다 싶은 것, 응원 한마디…"
-        : who === "serving"
-          ? "선배들에게: 휴가, 보직, 전역 준비… 묻고 싶은 것"
-          : "선배들에게: 훈련소 준비물, 첫 휴가… 입대 전에 궁금한 것";
+    who === "reserve"
+      ? "후임들에게 한마디, 그 시절 이야기, 요즘 듣는 노래…"
+      : who === "serving"
+        ? "생활관 이야기, 선배들에게 묻고 싶은 것…"
+        : "훈련소 준비물, 첫 휴가… 입대 전에 궁금한 것";
 
   return (
     <>
@@ -143,40 +131,32 @@ function Board({
       <main className="flex flex-1 flex-col gap-2 px-4 pb-24">
         {writing && (
           <section className="flex flex-col gap-2 rounded-2xl border-2 border-primary bg-card px-3 pb-3 pt-3">
-            <div className="flex gap-1.5 px-1" role="group" aria-label="말머리">
-              {WRITE_TOPICS.map((w) => (
-                <Chip
-                  key={w.kind}
-                  on={kind === w.kind}
-                  onClick={() => setKind(w.kind)}
-                >
-                  {w.label}
-                </Chip>
-              ))}
-            </div>
             <PostComposer
               id="community-composer"
-              label={kind === "post" ? "이야기" : "선후임 소통"}
+              label="글쓰기"
               hint={`${authorLine({ ...author, rank: rankNow(status) })}으로 표시돼요`}
               titleMaxLength={TITLE_MAX_LENGTH}
               titlePlaceholder="제목"
               placeholder={placeholder}
-              maxLength={
-                kind === "post" ? COMMUNITY_MAX_LENGTH : TALK_MAX_LENGTH
-              }
+              maxLength={COMMUNITY_MAX_LENGTH}
               submitLabel="올리기"
               saving={feed.add.isPending}
               onCancel={() => setWriting(false)}
               onSubmit={(body, done, title) =>
                 feed.add.mutate(
-                  { kind, title, body, rank: rankNow(status), author },
+                  {
+                    kind: "post",
+                    title,
+                    body,
+                    rank: rankNow(status),
+                    author,
+                  },
                   {
                     onSuccess: () => {
                       done();
                       setWriting(false);
-                      // Show it: move to 전체 when this topic doesn't list it
-                      const kinds: readonly string[] = FEED_TOPICS[topic.key];
-                      if (!kinds.includes(kind)) goTopic(TOPICS[0]);
+                      // Show it: 음악 lists only 노래 댓글
+                      if (topic.key !== "all") goTopic(TOPICS[0]);
                       toast("글을 올렸어요");
                     },
                     onError,
@@ -227,13 +207,8 @@ function Board({
                   onDelete={() => setDeleting(m)}
                 />
               ) : (
-                // 이야기 and 소통 글 open into their page with 댓글
-                <TalkItem
-                  key={m.id}
-                  talk={m}
-                  search={search}
-                  label={topic.key === "all" ? kindLabel(m.kind) : null}
-                />
+                // 글 open into their page with 댓글
+                <TalkItem key={m.id} talk={m} search={search} />
               ),
             )}
             {feed.hasMore && (

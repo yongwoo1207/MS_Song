@@ -82,7 +82,7 @@ export default function My() {
       </div>
       <p className="px-4 pb-2 text-xs leading-normal text-ink-icon">
         {tab === "posts"
-          ? "커뮤니티 글과 선후임 소통 글이에요."
+          ? "커뮤니티에 쓴 글이에요."
           : "노래에 남긴 추억과 글에 단 댓글이에요."}{" "}
         이 기기에서 쓴 글만 보여요.
       </p>

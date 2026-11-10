@@ -79,7 +79,7 @@ describe("postContext", () => {
     expect(postContext({ ...base, title: "휴가 계획" })).toBe(
       "커뮤니티 · 휴가 계획",
     );
-    expect(postContext({ ...base, kind: "talk" })).toBe("선후임 소통 글");
+    expect(postContext({ ...base, kind: "talk" })).toBe("커뮤니티 글");
     expect(postContext({ ...base, kind: "reply" })).toBe("댓글");
     expect(postContext({ ...base, kind: "reply", replyTo: "c1" })).toBe("답글");
     expect(postContext({ ...base, kind: "reply" })).toBe("댓글");

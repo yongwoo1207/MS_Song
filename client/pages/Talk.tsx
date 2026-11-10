@@ -54,10 +54,7 @@ export default function Talk() {
         toast("지웠어요");
         if (m.kind === "reply") return;
         if (window.history.length > 1) navigate(-1);
-        else
-          navigate(m.kind === "post" ? "/community" : "/community/talk", {
-            replace: true,
-          });
+        else navigate("/community", { replace: true });
       },
       onError,
     });
@@ -73,7 +70,7 @@ export default function Talk() {
 
   return (
     <MobileShell>
-      <SubHeader title={community ? "커뮤니티" : "선후임 소통"} />
+      <SubHeader title="커뮤니티" />
       <main className="flex flex-1 flex-col gap-3 px-4 pb-8">
         {isLoading ? (
           <p className="py-8 text-center text-[13px] text-muted-foreground">

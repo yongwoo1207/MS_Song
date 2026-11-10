@@ -234,9 +234,9 @@ export function postContext(
   p: Pick<Memory, "kind" | "song" | "title" | "replyTo">,
 ): string {
   if (p.song) return `♪ ${p.song.title} · ${p.song.artist}`;
-  if (p.kind === "post")
+  // 선후임 소통 글 (talk) are 커뮤니티 글 now
+  if (p.kind === "post" || p.kind === "talk")
     return p.title ? `커뮤니티 · ${p.title}` : "커뮤니티 글";
-  if (p.kind === "talk") return "선후임 소통 글";
   if (p.kind === "reply") return p.replyTo ? "답글" : "댓글";
   return "";
 }

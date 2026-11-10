@@ -31,8 +31,9 @@ const App = () => (
           <Route path="/dday" element={<Dday />} />
           <Route path="/result" element={<Result />} />
           <Route path="/community" element={<Community />} />
-          <Route path="/community/story" element={<Community />} />
           <Route path="/community/music" element={<Community />} />
+          {/* Old topic links: show the whole board */}
+          <Route path="/community/story" element={<Community />} />
           <Route path="/community/talk" element={<Community />} />
           <Route path="/me" element={<My />} />
           <Route path="/notifications" element={<Notifications />} />
