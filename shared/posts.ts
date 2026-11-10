@@ -17,6 +17,24 @@ export const REPLY_MAX_LENGTH = 300;
 export const COMMUNITY_MAX_LENGTH = 500;
 export const TITLE_MAX_LENGTH = 40;
 
+/**
+ * 커뮤니티 board topics and the post kinds each one lists. "all" is the one
+ * board shown by default. A new board is one more entry here (and in
+ * client/lib/boards.ts); if its posts need telling apart from existing
+ * kinds, give posts a board column then.
+ */
+export const FEED_TOPICS = {
+  all: ["post", "talk", "record"],
+  story: ["post"],
+  music: ["record"],
+  talk: ["talk"],
+} as const satisfies Record<string, readonly ApiPost["kind"][]>;
+export type FeedTopic = keyof typeof FEED_TOPICS;
+
+/** Who wrote it, as a feed filter. */
+export const FEED_WHO = ["reserve", "serving", "pre"] as const;
+export type FeedWho = (typeof FEED_WHO)[number];
+
 export type PostRank = (typeof POST_RANKS)[number];
 export type PostBranch = (typeof POST_BRANCHES)[number];
 export type ReportReason = (typeof REPORT_REASONS)[number];

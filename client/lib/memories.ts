@@ -8,6 +8,7 @@ import {
   type ApiPost,
   type ApiSongStats,
   DEVICE_HEADER,
+  type FeedTopic,
   type PostBranch,
   type PostRank,
   RECORD_MAX_LENGTH,
@@ -44,19 +45,18 @@ export interface MemoryPage {
 
 export const MEMORY_PAGE = 20;
 
-/** A 커뮤니티 글: a free post with a title, no song. */
+/** A 커뮤니티 글 (이야기) or 선후임 소통 글: title and body, no song. */
 export interface NewPost {
+  kind: "post" | "talk";
   title: string;
   body: string;
   rank: PostRank | null; // the writer's rank now (null for 예비역)
   author: MemoryAuthor;
 }
 
-/** 커뮤니티 filter: one rank's posts, or only 예비역's. */
-export type FeedFilter = PostRank | "예비역" | null;
-
-/** 커뮤니티 board: 이야기 (커뮤니티 글) or 음악 (memories under songs). */
-export type FeedTopic = "story" | "music";
+/** 커뮤니티 filter: one rank's posts, or only 예비역's or 입대 예정자'. */
+export type FeedFilter = PostRank | "예비역" | "입대 예정" | null;
+export type { FeedTopic };
 
 export interface MemoryStore {
   list(songKey: string, before?: string): Promise<MemoryPage>;
@@ -66,7 +66,7 @@ export interface MemoryStore {
     filter: FeedFilter,
     before?: string,
   ): Promise<MemoryPage>;
-  /** A 커뮤니티 글, on no song. */
+  /** A 커뮤니티 글 or 선후임 소통 글, on no song. */
   addPost(input: NewPost): Promise<Memory>;
   add(input: NewMemory): Promise<Memory>;
   remove(id: string): Promise<void>;
@@ -120,16 +120,17 @@ export const apiMemoryStore: MemoryStore = {
       feed: topic,
       limit: `${MEMORY_PAGE}`,
     });
-    if (filter === "예비역") q.set("reserve", "1");
+    if (filter === "예비역") q.set("who", "reserve");
+    else if (filter === "입대 예정") q.set("who", "pre");
     else if (filter) q.set("rank", filter);
     if (before) q.set("before", before);
     const data = await call<{ posts: Memory[]; next?: string | null }>(`?${q}`);
     return { posts: data.posts, next: data.next ?? null };
   },
-  async addPost({ title, body, rank, author }) {
+  async addPost({ kind, title, body, rank, author }) {
     const data = await call<{ post: Memory }>("", {
       method: "POST",
-      body: JSON.stringify({ kind: "post", title, body, rank, ...author }),
+      body: JSON.stringify({ kind, title, body, rank, ...author }),
     });
     return data.post;
   },

@@ -6,7 +6,6 @@ import {
   notificationHref,
   notificationText,
 } from "./notifications";
-import { talkApi } from "./talks";
 
 vi.mock("./device", () => ({ deviceToken: () => "test-device-token-1234" }));
 
@@ -116,9 +115,10 @@ describe("activity API", () => {
     await apiMemoryStore.listMine();
     await apiMemoryStore.toggleSongLike("a|b");
     await apiMemoryStore.feed("music", "일병", "c");
-    await talkApi.list({ who: "reserve" });
-    await talkApi.list({ who: "pre" });
+    await apiMemoryStore.feed("all", "예비역");
+    await apiMemoryStore.feed("talk", "입대 예정");
     await apiMemoryStore.addPost({
+      kind: "talk",
       title: "제목",
       body: "그때",
       rank: null,
@@ -135,8 +135,8 @@ describe("activity API", () => {
       "/api/me/posts",
       "/api/songs/like",
       `/api/posts?feed=music&limit=20&rank=${encodeURIComponent("일병")}&before=c`,
-      "/api/posts?kind=talk&limit=20&reserve=1",
-      "/api/posts?kind=talk&limit=20&reserve=pre",
+      "/api/posts?feed=all&limit=20&who=reserve",
+      "/api/posts?feed=talk&limit=20&who=pre",
       "/api/posts",
     ]);
     expect(
@@ -144,7 +144,7 @@ describe("activity API", () => {
         fetch.mock.calls[fetch.mock.calls.length - 1][1]!.body as string,
       ),
     ).toEqual({
-      kind: "post",
+      kind: "talk",
       title: "제목",
       body: "그때",
       rank: null,

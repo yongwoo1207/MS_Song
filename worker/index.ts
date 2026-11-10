@@ -5,11 +5,12 @@
  *   GET    /api/posts?song=<key>[&limit=20][&before=<cursor>]
  *                                    memories under a song, newest first,
  *                                    a page at a time ({ posts, next })
- *   GET    /api/posts?feed=story|music[&rank=][&reserve=1][&before=<cursor>]
- *                                    커뮤니티 이야기 (글) or 음악 (memories
- *                                    under songs), newest first
+ *   GET    /api/posts?feed=all|story|music|talk[&rank=][&who=reserve|serving|pre]
+ *                  [&before=<cursor>]
+ *                                    the 커뮤니티 board, or one topic of it
+ *                                    (FEED_TOPICS), newest first
  *   GET    /api/posts?kind=talk[&reserve=0|1|pre][&before=<cursor>]
- *                                    선후임 소통 글, newest first
+ *                                    선후임 소통 글 (older clients)
  *   GET    /api/posts/:id            a 커뮤니티 글 or 소통 글 with its 댓글
  *                                    and 대댓글
  *   POST   /api/posts                write a song memory (NewSongRecord),
@@ -42,6 +43,8 @@ import {
   RECORD_MAX_LENGTH,
   REPLY_MAX_LENGTH,
   COMMUNITY_MAX_LENGTH,
+  FEED_TOPICS,
+  FEED_WHO,
   REPORT_REASONS,
   TALK_MAX_LENGTH,
   TITLE_MAX_LENGTH,
@@ -303,28 +306,40 @@ const listSongRecords = (req: Request, env: Env, url: URL, song: string) =>
     [song],
   );
 
+/** SQL for who wrote a post (FEED_WHO). */
+const WHO_SQL = {
+  reserve: "p.is_reserve = 1",
+  serving: "p.is_reserve = 0 AND p.days_to_enlist IS NULL",
+  pre: "p.days_to_enlist IS NOT NULL",
+} as const;
+
 /**
- * A 커뮤니티 board: `feed=story` 커뮤니티 글, `feed=music` memories under
- * songs (both for any other value, as older clients ask). `rank` only that
- * rank's (the chart's, for a song), `reserve=1` only by 예비역.
+ * The 커뮤니티 board: `feed` one of FEED_TOPICS (older clients send
+ * "community": 이야기 and 음악). `rank` only that rank's (the chart's, for
+ * a song), `who` only by 예비역, 현역 or 입대 예정자 (`reserve=1` from older
+ * clients: 예비역).
  */
 function listCommunityFeed(req: Request, env: Env, url: URL) {
-  const feed = url.searchParams.get("feed");
-  const kinds =
-    feed === "story"
-      ? "('post')"
-      : feed === "music"
-        ? "('record')"
-        : "('record', 'post')";
+  const feed = url.searchParams.get("feed") ?? "";
+  const kinds: readonly string[] =
+    feed in FEED_TOPICS
+      ? FEED_TOPICS[feed as keyof typeof FEED_TOPICS]
+      : ["record", "post"];
   const rank = z.enum(POST_RANKS).safeParse(url.searchParams.get("rank"));
-  const reserve = url.searchParams.get("reserve") === "1" ? 1 : null;
+  const who = z
+    .enum(FEED_WHO)
+    .safeParse(
+      url.searchParams.get("who") ??
+        (url.searchParams.get("reserve") === "1" ? "reserve" : null),
+    );
   return pagedPosts(
     req,
     env,
     url,
-    `p.kind IN ${kinds} AND p.status = 'visible'
-     AND (?5 IS NULL OR p.rank = ?5) AND (?6 IS NULL OR p.is_reserve = ?6)`,
-    [rank.success ? rank.data : null, reserve],
+    `p.kind IN (${kinds.map((k) => `'${k}'`).join(", ")})
+     AND p.status = 'visible' AND (?5 IS NULL OR p.rank = ?5)
+     ${who.success ? `AND ${WHO_SQL[who.data]}` : ""}`,
+    [rank.success ? rank.data : null],
   );
 }
 
@@ -883,6 +898,9 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
       }
       const kind = url.searchParams.get("kind");
       if (kind === "talk") return listTalks(req, env, url);
+      // Pages from before the 타임라인 dropped song memories still ask
+      // for them by month until they reload: answer with none, not an error
+      if (url.searchParams.has("from")) return json({ posts: [] });
       throw new HttpError(400, "잘못된 요청이에요");
     }
     if (req.method === "POST") return createPost(req, env);

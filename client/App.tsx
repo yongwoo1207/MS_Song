@@ -16,6 +16,7 @@ import Notifications from "./pages/Notifications";
 import Talk from "./pages/Talk";
 import NotFound from "./pages/NotFound";
 import Layout from "@/components/Layout";
+import VersionWatcher from "@/components/VersionWatcher";
 
 const queryClient = new QueryClient();
 
@@ -25,12 +26,14 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <VersionWatcher />
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/dday" element={<Dday />} />
           <Route path="/result" element={<Result />} />
           <Route path="/timeline" element={<Timeline />} />
           <Route path="/community" element={<Community />} />
+          <Route path="/community/story" element={<Community />} />
           <Route path="/community/music" element={<Community />} />
           <Route path="/community/talk" element={<Community />} />
           <Route path="/me" element={<My />} />

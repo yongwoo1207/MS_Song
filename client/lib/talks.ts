@@ -1,71 +1,21 @@
 /**
- * 선후임 소통: 현역 and 예비역 write to each other and reply under a post.
- * Served by the Worker's /api/posts (kind talk / reply).
+ * A 커뮤니티 글 or 선후임 소통 글 with its 댓글 and 대댓글. Served by the
+ * Worker's /api/posts (kind reply). Lists live on the 커뮤니티 board
+ * (memoryStore.feed).
  */
-import {
-  type PostRank,
-  TALK_MAX_LENGTH,
-  REPLY_MAX_LENGTH,
-} from "@shared/posts";
-import {
-  type Memory,
-  type MemoryAuthor,
-  type MemoryPage,
-  apiCall,
-} from "./memories";
+import { TALK_MAX_LENGTH, REPLY_MAX_LENGTH } from "@shared/posts";
+import { type Memory, type MemoryAuthor, apiCall } from "./memories";
 
 export { TALK_MAX_LENGTH, REPLY_MAX_LENGTH };
-
-export type TalkWho = "reserve" | "serving" | "pre";
-const WHO_PARAM: Record<TalkWho, string> = {
-  reserve: "1",
-  serving: "0",
-  pre: "pre",
-};
 
 export interface Thread {
   post: Memory;
   replies: Memory[];
 }
 
-const page = async (q: URLSearchParams): Promise<MemoryPage> => {
-  const data = await apiCall<{ posts: Memory[]; next?: string | null }>(
-    `/api/posts?${q}`,
-  );
-  return { posts: data.posts, next: data.next ?? null };
-};
-
 export const talkApi = {
-  /** Newest first; `who` only 예비역's, 현역's or 입대 예정자's. */
-  list(opts: { before?: string; who?: TalkWho; limit?: number } = {}) {
-    const q = new URLSearchParams({
-      kind: "talk",
-      limit: `${opts.limit ?? 20}`,
-    });
-    if (opts.who) q.set("reserve", WHO_PARAM[opts.who]);
-    if (opts.before) q.set("before", opts.before);
-    return page(q);
-  },
   thread(id: string) {
     return apiCall<Thread>(`/api/posts/${encodeURIComponent(id)}`);
-  },
-  async ask(input: {
-    title: string;
-    body: string;
-    rank: PostRank | null;
-    author: MemoryAuthor;
-  }) {
-    const data = await apiCall<{ post: Memory }>("/api/posts", {
-      method: "POST",
-      body: JSON.stringify({
-        kind: "talk",
-        title: input.title,
-        body: input.body,
-        rank: input.rank,
-        ...input.author,
-      }),
-    });
-    return data.post;
   },
   /** A 댓글 under a thread, or a 대댓글 when `replyTo` is a 댓글. */
   async reply(input: {

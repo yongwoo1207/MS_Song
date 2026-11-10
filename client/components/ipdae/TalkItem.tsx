@@ -8,8 +8,11 @@ export default function TalkItem({
   talk: m,
   search = "",
   compact,
+  label,
 }: {
   talk: Memory;
+  /** Topic badge in a mixed list, e.g. "선후임 소통" */
+  label?: string | null;
   /** ?d=…&b=… to carry over */
   search?: string;
   /** Inside a home card: no border box */
@@ -28,6 +31,11 @@ export default function TalkItem({
       >
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="flex items-center gap-1.5 text-[11px] text-ink-icon">
+            {label && (
+              <span className="shrink-0 rounded-md bg-accent px-1.5 py-[2px] font-bold text-primary">
+                {label}
+              </span>
+            )}
             <span className="truncate">{authorLine(m)}</span>
             {m.mine && <span className="shrink-0 font-bold">· 내 글</span>}
             <span className="flex-1" />

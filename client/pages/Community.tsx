@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { Link, Navigate, useLocation } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Check, ChevronDown, MessagesSquare, PenLine } from "lucide-react";
 import { toast } from "sonner";
 import MobileShell from "@/components/ipdae/MobileShell";
@@ -17,44 +17,46 @@ import {
 } from "@/components/ui/drawer";
 import { useServicePlan } from "@/hooks/useServicePlan";
 import { useCommunityFeed } from "@/hooks/useCommunityFeed";
-import { useTalks } from "@/hooks/useTalks";
+import {
+  type BoardTopic,
+  TOPICS,
+  WRITE_TOPICS,
+  type WriteKind,
+  kindLabel,
+  topicOf,
+} from "@/lib/boards";
 import { dLabel, ddayStatus } from "@/lib/dday";
 import {
   COMMUNITY_MAX_LENGTH,
-  type FeedTopic,
+  type FeedFilter,
+  type Memory,
   TITLE_MAX_LENGTH,
   authorLine,
   writerOf,
 } from "@/lib/memories";
-import { TALK_MAX_LENGTH, type TalkWho } from "@/lib/talks";
+import { TALK_MAX_LENGTH } from "@/lib/talks";
 import { RANKS, type ServicePlan } from "@/lib/service";
-import type { SongRef } from "@shared/posts";
+import { FEED_TOPICS, type SongRef } from "@shared/posts";
 import { cn } from "@/lib/utils";
 
-const RANK_FILTERS = [...RANKS, "예비역"] as const;
-type RankFilter = (typeof RANK_FILTERS)[number];
+const WRITER_FILTERS = [...RANKS, "예비역", "입대 예정"] as const;
 
 type Status = ReturnType<typeof ddayStatus>;
+type Who = "reserve" | "serving" | "pre";
 
 /**
- * 커뮤니티, three tabs:
- *  - 이야기 (/community): 커뮤니티 글, free posts that open into their 댓글.
- *  - 음악 (/community/music): memories (댓글) left under songs; tapping the
- *    song plays it.
- *  - 선후임 소통 (/community/talk): 현역, 예비역 and 입대 예정자 write to
- *    each other. The home's 한마디 cards open this tab.
- * The first two filter by rank or to 예비역 only. 입대 예정자 write too,
- * shown as "입대 23일 전".
+ * 커뮤니티: one board with everything, newest first: 이야기 (free posts),
+ * 음악 (댓글 left under songs; tapping the song plays it) and 선후임 소통
+ * (현역, 예비역 and 입대 예정자 asking each other). Topic chips narrow it,
+ * each with its own address (/community/music …) so home cards can link
+ * to one; topics are listed in lib/boards.ts. A 계급 chip narrows by who
+ * wrote it.
  */
 export default function Community() {
   const { plan } = useServicePlan();
   const status = useMemo(() => (plan ? ddayStatus(plan) : null), [plan]);
-  const { pathname, search } = useLocation();
-  const tab = pathname.startsWith("/community/talk")
-    ? "talk"
-    : pathname.startsWith("/community/music")
-      ? "music"
-      : "story";
+  const { pathname } = useLocation();
+  const topic = topicOf(pathname);
 
   if (!plan || !status) return <Navigate to="/" replace />;
 
@@ -67,36 +69,12 @@ export default function Community() {
 
   return (
     <MobileShell>
-      <header className="flex flex-col gap-px px-5 pb-2 pt-4">
+      <header className="flex flex-col gap-px border-b px-5 pb-3 pt-4">
         <span className="font-mono text-[11px] text-ink-icon">{me}</span>
         <h1 className="text-lg font-bold">커뮤니티</h1>
       </header>
-
-      <nav className="flex gap-4 border-b px-5" aria-label="커뮤니티 탭">
-        <Tab to={`/community${search}`} on={tab === "story"}>
-          이야기
-        </Tab>
-        <Tab to={`/community/music${search}`} on={tab === "music"}>
-          음악
-        </Tab>
-        <Tab to={`/community/talk${search}`} on={tab === "talk"}>
-          선후임 소통
-        </Tab>
-      </nav>
-
-      {tab === "talk" ? (
-        <TalkSpace plan={plan} status={status} search={search} />
-      ) : (
-        // Keyed so each board keeps its own filter and player
-        <Board
-          key={tab}
-          topic={tab}
-          plan={plan}
-          status={status}
-          search={search}
-        />
-      )}
-
+      {/* Keyed so the 글쓰기 box starts on this topic's 말머리 */}
+      <Board key={topic.key} topic={topic} plan={plan} status={status} />
       <BottomNav />
     </MobileShell>
   );
@@ -106,92 +84,121 @@ export default function Community() {
 const rankNow = (status: Status) =>
   status.status === "serving" ? status.current.rank : null;
 
-/** 이야기 (커뮤니티 글, written here) or 음악 (memories under songs). */
+const whoOf = (status: Status): Who =>
+  status.status === "done"
+    ? "reserve"
+    : status.status === "serving"
+      ? "serving"
+      : "pre";
+
+function filterNote(filter: FeedFilter) {
+  if (filter === "예비역") return "예비역이 쓴 것만 보여요.";
+  if (filter === "입대 예정") return "입대 예정자가 쓴 것만 보여요.";
+  return `${filter} 때 쓴 글과 ${filter} 시절 노래 댓글만 보여요.`;
+}
+
 function Board({
   topic,
   plan,
   status,
-  search,
 }: {
-  topic: FeedTopic;
+  topic: BoardTopic;
   plan: ServicePlan;
   status: Status;
-  search: string;
 }) {
-  const music = topic === "music";
-  const [rank, setRank] = useState<RankFilter | null>(null);
+  const navigate = useNavigate();
+  const { search } = useLocation();
+  const [filter, setFilter] = useState<FeedFilter>(null);
+  const [picker, setPicker] = useState(false);
+  const feed = useCommunityFeed(topic.key, filter);
   // The song memory being listened to
   const [song, setSong] = useState<SongRef | null>(null);
   const closeSong = useCallback(() => setSong(null), []);
-  const [picker, setPicker] = useState(false);
-  const feed = useCommunityFeed(topic, rank);
   const [writing, setWriting] = useState(false);
+  const [kind, setKind] = useState<WriteKind>(topic.writes);
   // Asked in a dialog first (see ConfirmDelete)
-  const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<Memory | null>(null);
 
-  // 음악 is written from the song screens (입대곡 · 타임라인 player)
-  const canWrite = !music;
-  // A post carries the writer's rank now (none for 예비역, 입대 예정자)
-  const myRank = rankNow(status);
   const author = writerOf(plan);
+  const who = whoOf(status);
+  const onError = (err: Error) => toast(err.message);
   const openComposer = () => {
     setWriting(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  const goTopic = (t: BoardTopic) =>
+    navigate(`${t.path}${search}`, { replace: true });
 
-  const note = music
-    ? rank === "예비역"
-      ? "예비역이 노래에 남긴 댓글만 보여요."
-      : rank
-        ? `${rank} 시절 노래에 남긴 댓글만 보여요.`
-        : "노래에 남긴 댓글이 최신순으로 모여요. 노래를 누르면 들을 수 있어요."
-    : rank === "예비역"
-      ? "예비역이 쓴 글만 보여요."
-      : rank
-        ? `${rank} 때 쓴 글만 보여요.`
-        : "자유롭게 쓴 글이 최신순으로 보여요. 누르면 댓글을 볼 수 있어요.";
-  const onError = (err: Error) => toast(err.message);
+  const placeholder =
+    kind === "post"
+      ? "생활관 이야기, 요즘 듣는 노래, 하고 싶은 말…"
+      : who === "reserve"
+        ? "후임들에게: 그때 이랬으면 좋았겠다 싶은 것, 응원 한마디…"
+        : who === "serving"
+          ? "선배들에게: 휴가, 보직, 전역 준비… 묻고 싶은 것"
+          : "선배들에게: 훈련소 준비물, 첫 휴가… 입대 전에 궁금한 것";
 
   return (
     <>
       {song && <SongPlayer song={song} onClose={closeSong} />}
       <div
-        className="flex flex-wrap gap-1.5 px-4 pb-2.5 pt-3"
+        className="flex flex-wrap gap-1.5 px-4 pb-2 pt-3"
         role="group"
-        aria-label="글 필터"
+        aria-label="주제"
       >
-        <Chip on={!rank} onClick={() => setRank(null)}>
-          전체
-        </Chip>
-        <Chip on={!!rank} onClick={() => setPicker(true)} hasMenu>
-          {rank ?? "계급"}
+        {TOPICS.map((t) => (
+          <Chip key={t.key} on={t.key === topic.key} onClick={() => goTopic(t)}>
+            {t.label}
+          </Chip>
+        ))}
+        <span aria-hidden="true" className="mx-0.5 my-2 w-px bg-border" />
+        <Chip on={!!filter} onClick={() => setPicker(true)} hasMenu>
+          {filter ?? "계급"}
         </Chip>
       </div>
 
-      <p className="px-4 pb-2 text-xs leading-normal text-ink-icon">{note}</p>
+      <p className="px-4 pb-2 text-xs leading-normal text-ink-icon">
+        {filter ? filterNote(filter) : topic.note}
+      </p>
 
       <main className="flex flex-1 flex-col gap-2 px-4 pb-24">
-        {writing && canWrite && (
-          <section className="rounded-2xl border-2 border-primary bg-card px-3 pb-3 pt-3">
+        {writing && (
+          <section className="flex flex-col gap-2 rounded-2xl border-2 border-primary bg-card px-3 pb-3 pt-3">
+            <div className="flex gap-1.5 px-1" role="group" aria-label="말머리">
+              {WRITE_TOPICS.map((w) => (
+                <Chip
+                  key={w.kind}
+                  on={kind === w.kind}
+                  onClick={() => setKind(w.kind)}
+                >
+                  {w.label}
+                </Chip>
+              ))}
+            </div>
             <PostComposer
               id="community-composer"
-              label="자유글"
-              hint={`${authorLine({ ...author, rank: myRank })}으로 표시돼요`}
+              label={kind === "post" ? "이야기" : "선후임 소통"}
+              hint={`${authorLine({ ...author, rank: rankNow(status) })}으로 표시돼요`}
               titleMaxLength={TITLE_MAX_LENGTH}
               titlePlaceholder="제목"
-              placeholder="생활관 이야기, 요즘 듣는 노래, 하고 싶은 말…"
-              maxLength={COMMUNITY_MAX_LENGTH}
+              placeholder={placeholder}
+              maxLength={
+                kind === "post" ? COMMUNITY_MAX_LENGTH : TALK_MAX_LENGTH
+              }
               submitLabel="올리기"
               saving={feed.add.isPending}
               onCancel={() => setWriting(false)}
               onSubmit={(body, done, title) =>
                 feed.add.mutate(
-                  { title, body, rank: myRank, author },
+                  { kind, title, body, rank: rankNow(status), author },
                   {
                     onSuccess: () => {
                       done();
                       setWriting(false);
-                      setRank(null);
+                      setFilter(null);
+                      // Show it: move to 전체 when this topic doesn't list it
+                      const kinds: readonly string[] = FEED_TOPICS[topic.key];
+                      if (!kinds.includes(kind)) goTopic(TOPICS[0]);
                       toast("글을 올렸어요");
                     },
                     onError,
@@ -224,34 +231,30 @@ function Board({
             >
               <MessagesSquare className="size-6" strokeWidth={2} />
             </span>
-            <h2 className="text-base font-bold">
-              {music
-                ? "아직 노래에 남긴 댓글이 없어요"
-                : "아직 올라온 글이 없어요"}
-            </h2>
+            <h2 className="text-base font-bold">아직 올라온 글이 없어요</h2>
             <p className="text-[13.5px] leading-relaxed text-muted-foreground">
-              {music
-                ? "입대곡이나 타임라인에서 노래를 틀고 댓글을 남겨보세요."
-                : "첫 번째 이야기를 남겨보세요."}
+              {topic.empty}
             </p>
           </section>
         ) : (
-          <ul
-            className="flex flex-col gap-2"
-            aria-label={music ? "노래 댓글" : "커뮤니티 글"}
-          >
+          <ul className="flex flex-col gap-2" aria-label="커뮤니티 글">
             {feed.posts.map((m) =>
-              m.kind === "post" ? (
-                // 커뮤니티 글 open into their page with 댓글
-                <TalkItem key={m.id} talk={m} search={search} />
-              ) : (
+              m.kind === "record" ? (
                 <MemoryItem
                   key={m.id}
                   memory={m}
                   showSong
                   onPlay={m.song ? () => setSong(m.song) : undefined}
                   onLike={() => feed.like.mutate(m.id, { onError })}
-                  onDelete={() => setDeleting(m.id)}
+                  onDelete={() => setDeleting(m)}
+                />
+              ) : (
+                // 이야기 and 소통 글 open into their page with 댓글
+                <TalkItem
+                  key={m.id}
+                  talk={m}
+                  search={search}
+                  label={topic.key === "all" ? kindLabel(m.kind) : null}
                 />
               ),
             )}
@@ -273,7 +276,7 @@ function Board({
         )}
       </main>
 
-      {!writing && canWrite && (
+      {!writing && (
         <WriteButton onClick={openComposer} controls="community-composer" />
       )}
 
@@ -281,17 +284,15 @@ function Board({
         <DrawerContent className="mx-auto max-w-[430px] px-4 pb-8">
           <DrawerTitle className="pt-4 text-base">계급 선택</DrawerTitle>
           <DrawerDescription className="pb-3 text-xs">
-            {music
-              ? "그 계급 시절 노래에 남긴 댓글만 보여요."
-              : "그 계급 때 쓴 글만 보여요."}
+            그 계급 때 쓴 글과 그 시절 노래 댓글만 보여요.
           </DrawerDescription>
           <ul className="flex flex-col gap-1.5">
-            {RANK_FILTERS.map((r) => (
+            {WRITER_FILTERS.map((r) => (
               <PickerRow
                 key={r}
-                on={rank === r}
+                on={filter === r}
                 onClick={() => {
-                  setRank(rank === r ? null : r);
+                  setFilter(filter === r ? null : r);
                   setPicker(false);
                 }}
               >
@@ -303,202 +304,20 @@ function Board({
       </Drawer>
 
       <ConfirmDelete
-        what={music ? "댓글" : "글"}
+        what={deleting?.kind === "record" ? "댓글" : "글"}
         open={!!deleting}
         onCancel={() => setDeleting(null)}
         onConfirm={() => {
-          const id = deleting;
+          const m = deleting;
           setDeleting(null);
-          if (id)
-            feed.remove.mutate(id, {
+          if (m)
+            feed.remove.mutate(m.id, {
               onSuccess: () => toast("지웠어요"),
               onError,
             });
         }}
       />
     </>
-  );
-}
-
-const WHO: { key: TalkWho | "all"; label: string }[] = [
-  { key: "all", label: "전체" },
-  { key: "reserve", label: "예비역 글" },
-  { key: "serving", label: "현역 글" },
-  { key: "pre", label: "입대 예정 글" },
-];
-
-/** 선후임 소통: 현역 and 예비역 talk to each other. */
-function TalkSpace({
-  plan,
-  status,
-  search,
-}: {
-  plan: ServicePlan;
-  status: Status;
-  search: string;
-}) {
-  const [who, setWho] = useState<TalkWho | "all">("all");
-  const talks = useTalks({ who: who === "all" ? undefined : who });
-  const [writing, setWriting] = useState(false);
-  const mine: TalkWho =
-    status.status === "done"
-      ? "reserve"
-      : status.status === "serving"
-        ? "serving"
-        : "pre";
-  const author = writerOf(plan);
-  const onError = (err: Error) => toast(err.message);
-  const openComposer = () => {
-    setWriting(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  return (
-    <>
-      <p className="px-4 pb-2 pt-3 text-xs leading-normal text-ink-icon">
-        {mine === "reserve"
-          ? "복무 중인 후임들에게 한마디 남기고, 그들의 이야기에 답해주세요."
-          : mine === "serving"
-            ? "먼저 전역한 예비역 선배들에게 묻고 싶은 걸 남겨보세요."
-            : "입대를 앞두고 궁금한 걸 먼저 다녀온 선배들에게 물어보세요."}
-      </p>
-
-      <div
-        className="flex flex-wrap gap-1.5 px-4 pb-2.5"
-        role="group"
-        aria-label="글쓴이 필터"
-      >
-        {WHO.map((w) => (
-          <Chip key={w.key} on={who === w.key} onClick={() => setWho(w.key)}>
-            {w.label}
-          </Chip>
-        ))}
-      </div>
-
-      <main className="flex flex-1 flex-col gap-2 px-4 pb-24">
-        {writing && (
-          <section className="rounded-2xl border-2 border-primary bg-card px-3 pb-3 pt-3">
-            <PostComposer
-              id="talk-composer"
-              label={mine === "reserve" ? "현역 후임들에게" : "선배들에게"}
-              hint={`${authorLine({ ...author, rank: rankNow(status) })}으로 표시돼요`}
-              placeholder={
-                mine === "reserve"
-                  ? "그때 이랬으면 좋았겠다 싶은 것, 응원 한마디…"
-                  : mine === "serving"
-                    ? "휴가, 보직, 전역 준비… 선배들에게 묻고 싶은 것"
-                    : "훈련소 준비물, 첫 휴가… 입대 전에 궁금한 것"
-              }
-              titleMaxLength={TITLE_MAX_LENGTH}
-              titlePlaceholder="제목"
-              maxLength={TALK_MAX_LENGTH}
-              submitLabel="올리기"
-              saving={talks.ask.isPending}
-              autoFocus
-              onCancel={() => setWriting(false)}
-              onSubmit={(body, done, title) =>
-                talks.ask.mutate(
-                  {
-                    title,
-                    body,
-                    rank: rankNow(status),
-                    author,
-                  },
-                  {
-                    onSuccess: () => {
-                      done();
-                      setWriting(false);
-                      if (who !== "all" && who !== mine) setWho("all");
-                      toast("글을 올렸어요");
-                    },
-                    onError,
-                  },
-                )
-              }
-            />
-          </section>
-        )}
-        {talks.isLoading ? (
-          <p className="py-10 text-center text-[13px] text-muted-foreground">
-            불러오는 중…
-          </p>
-        ) : talks.isError ? (
-          <div className="flex flex-col items-center gap-2 rounded-2xl border bg-card px-6 py-8 text-center text-[13.5px] text-muted-foreground">
-            글을 불러오지 못했어요.
-            <button
-              type="button"
-              onClick={() => talks.refetch()}
-              className="h-9 rounded-xl border bg-card px-4 text-[13px] font-bold text-primary"
-            >
-              다시 시도
-            </button>
-          </div>
-        ) : talks.talks.length === 0 ? (
-          <section className="flex flex-col items-center gap-2.5 rounded-2xl border bg-card px-6 py-10 text-center">
-            <span
-              aria-hidden="true"
-              className="flex size-14 items-center justify-center rounded-full bg-accent text-primary"
-            >
-              <MessagesSquare className="size-6" strokeWidth={2} />
-            </span>
-            <h2 className="text-base font-bold">아직 올라온 글이 없어요</h2>
-            <p className="text-[13.5px] leading-relaxed text-muted-foreground">
-              첫 번째 이야기를 남겨보세요.
-            </p>
-          </section>
-        ) : (
-          <ul className="flex flex-col gap-2" aria-label="선후임 소통 글">
-            {talks.talks.map((m) => (
-              <TalkItem key={m.id} talk={m} search={search} />
-            ))}
-            {talks.hasMore && (
-              <li>
-                <button
-                  type="button"
-                  onClick={() =>
-                    talks.loadMore().catch(() => toast("더 불러오지 못했어요"))
-                  }
-                  disabled={talks.loadingMore}
-                  className="h-10 w-full rounded-xl border bg-card text-[13px] font-bold text-primary disabled:opacity-60"
-                >
-                  {talks.loadingMore ? "불러오는 중…" : "더 보기"}
-                </button>
-              </li>
-            )}
-          </ul>
-        )}
-      </main>
-
-      {!writing && (
-        <WriteButton onClick={openComposer} controls="talk-composer" />
-      )}
-    </>
-  );
-}
-
-function Tab({
-  to,
-  on,
-  children,
-}: {
-  to: string;
-  on: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <Link
-      to={to}
-      replace
-      aria-current={on ? "page" : undefined}
-      className={cn(
-        "-mb-px border-b-2 pb-2 pt-1 text-[14.5px] font-bold",
-        on
-          ? "border-primary text-foreground"
-          : "border-transparent text-muted-foreground",
-      )}
-    >
-      {children}
-    </Link>
   );
 }
 

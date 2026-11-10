@@ -12,7 +12,7 @@ import {
 } from "@/lib/memories";
 
 /**
- * A 커뮤니티 board (이야기 or 음악), newest first, 20 at a time, plus
+ * The 커뮤니티 board or one topic of it, newest first, 20 at a time, plus
  * write / delete / like.
  */
 export function useCommunityFeed(topic: FeedTopic, filter: FeedFilter) {
