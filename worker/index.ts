@@ -19,8 +19,6 @@
  *   DELETE /api/posts/:id            delete your own post
  *   POST   /api/posts/:id/like       like / unlike
  *   POST   /api/posts/:id/report     report ({ reason })
- *   GET    /api/events?from=YYYY-MM&to=YYYY-MM
- *                                    major issues (사건) of those months
  *   GET    /api/song-counts          ApiSongStats: memories and hearts per song
  *   POST   /api/songs/like           heart / unheart a song ({ key })
  *   GET    /api/me/posts             everything I wrote (hidden ones too)
@@ -33,7 +31,6 @@
  */
 import { z } from "zod";
 import {
-  type ApiEvent,
   type ApiNotification,
   type ApiPost,
   type ApiSongStats,
@@ -387,42 +384,6 @@ async function getThread(req: Request, env: Env, id: string) {
     post: toApi(talk, me),
     replies: results.map((r) => toApi(r, me, talk.author_id)),
   });
-}
-
-interface EventRow {
-  id: string;
-  month: string;
-  date: string | null;
-  title: string;
-  summary: string;
-  scope: string;
-  source_url: string | null;
-}
-
-const toApiEvent = (r: EventRow): ApiEvent => ({
-  id: r.id,
-  month: r.month,
-  date: r.date,
-  title: r.title,
-  summary: r.summary,
-  scope: r.scope,
-  sourceUrl: r.source_url,
-});
-
-async function listEvents(env: Env, url: URL) {
-  const from = url.searchParams.get("from") ?? "";
-  const to = url.searchParams.get("to") ?? "";
-  if (!MONTH.test(from) || !MONTH.test(to) || from > to) {
-    throw new HttpError(400, "from, to 값이 필요해요 (YYYY-MM)");
-  }
-  const { results } = await env.DB.prepare(
-    `SELECT * FROM events e
-     WHERE e.month BETWEEN ? AND ?
-     ORDER BY e.month, COALESCE(e.date, e.month)`,
-  )
-    .bind(from, to)
-    .all<EventRow>();
-  return json({ events: results.map(toApiEvent) });
 }
 
 /** Memories and hearts per song, for the chart lists. */
@@ -861,9 +822,6 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
   const parts = url.pathname.split("/").filter(Boolean); // ["api","posts",id?,action?]
   const [, resource, id, action] = parts;
 
-  if (resource === "events" && parts.length === 2 && req.method === "GET") {
-    return listEvents(env, url);
-  }
   if (
     resource === "song-counts" &&
     parts.length === 2 &&

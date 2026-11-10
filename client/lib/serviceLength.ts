@@ -1,14 +1,28 @@
-import { addMonths, differenceInCalendarDays, parseISO, subDays } from "date-fns";
+import {
+  addMonths,
+  differenceInCalendarDays,
+  parseISO,
+  subDays,
+} from "date-fns";
 
 /**
- * 현역병 복무기간 — 병역법 시행령 [별표 5] "현역병 등의 복무기간 단축 시행 계획"
- * (1차: 2008~2011 단축 후 동결, 2차: 2018~2021 단축)
+ * 현역병·사회복무요원 복무기간 — 병역법 시행령 [별표 5] "현역병 등의 복무기간
+ * 단축 시행 계획" (1차: 2008~2011 단축 후 동결, 2차: 2018~2021 단축)
  *
  * 전역일 = 입대일 + 기준 복무개월 − 1일 − 단축일수
  * 예) 육군 2017-01-03 입대: 21개월 → 2018-10-02, 단축 1일 → 2018-10-01 전역
+ *
+ * 카투사는 육군 현역병이라 육군과 같다. 공익(사회복무요원)은 소집일부터
+ * 같은 식으로 세어 소집해제일을 낸다.
  */
 
-export type ServiceBranch = "육군" | "해군" | "공군" | "해병대";
+export type ServiceBranch =
+  | "육군"
+  | "해군"
+  | "공군"
+  | "해병대"
+  | "카투사"
+  | "공익";
 
 export interface ServiceLength {
   /** 법정 기준 복무개월 (단축 전) */
@@ -18,21 +32,32 @@ export interface ServiceLength {
 }
 
 const day = (s: string) => parseISO(s);
-const daysFrom = (from: string, d: Date) => differenceInCalendarDays(d, day(from));
+const daysFrom = (from: string, d: Date) =>
+  differenceInCalendarDays(d, day(from));
 
 /** 2차 단축: 시작일부터 2주 단위로 1일씩 (첫 2주 = 1일) */
-const twoWeekSteps = (start: string, d: Date) => Math.floor(daysFrom(start, d) / 14) + 1;
+const twoWeekSteps = (start: string, d: Date) =>
+  Math.floor(daysFrom(start, d) / 14) + 1;
 
 /**
  * 1차 단축: 3주 단위로 1일씩. 별표의 단축조견표 마지막 3주 구간(anchor)을
  * 기준으로 거꾸로 계산한다. anchor 구간 = anchorDays 일 단축.
  */
 const threeWeekSteps = (anchorStart: string, anchorDays: number, d: Date) =>
-  anchorDays - Math.ceil(Math.max(0, -daysFrom(anchorStart, d)) / 21);
+  weekSteps(3, anchorStart, anchorDays, d);
+
+/** 1차 단축을 n주 단위로 (사회복무요원은 4주 단위 1일). */
+const weekSteps = (
+  weeks: number,
+  anchorStart: string,
+  anchorDays: number,
+  d: Date,
+) =>
+  anchorDays - Math.ceil(Math.max(0, -daysFrom(anchorStart, d)) / (weeks * 7));
 
 type Rule = (d: Date) => ServiceLength | null;
 
-const RULES: Record<"army" | "navy" | "airforce", Rule[]> = {
+const RULES: Record<"army" | "navy" | "airforce" | "social", Rule[]> = {
   // 육군·해병대: 24→21개월(1차, 2011-02-27 입대자부터 21개월), 21→18개월(2차)
   army: [
     (d) =>
@@ -41,7 +66,10 @@ const RULES: Record<"army" | "navy" | "airforce", Rule[]> = {
         : null,
     (d) =>
       d < day("2011-02-27")
-        ? { months: 24, reductionDays: 88 + Math.floor(daysFrom("2011-01-02", d) / 14) }
+        ? {
+            months: 24,
+            reductionDays: 88 + Math.floor(daysFrom("2011-01-02", d) / 14),
+          }
         : null,
     (d) => (d < day("2017-01-03") ? { months: 21, reductionDays: 0 } : null),
     (d) =>
@@ -77,16 +105,36 @@ const RULES: Record<"army" | "navy" | "airforce", Rule[]> = {
         : null,
     () => ({ months: 21, reductionDays: 0 }),
   ],
+  // 사회복무요원(공익): 26→24개월(1차, 4주 단위 1일, 2011-01-01 소집자부터
+  // 24개월), 24→21개월(2차, 공군과 같은 일정: 2016-10-03 소집자 1일 단축,
+  // 2020-03-16 소집자부터 21개월)
+  social: [
+    (d) =>
+      d < day("2011-01-01")
+        ? { months: 26, reductionDays: weekSteps(4, "2010-12-22", 68, d) }
+        : null,
+    (d) => (d < day("2016-10-03") ? { months: 24, reductionDays: 0 } : null),
+    (d) =>
+      d < day("2020-03-16")
+        ? { months: 24, reductionDays: twoWeekSteps("2016-10-03", d) }
+        : null,
+    () => ({ months: 21, reductionDays: 0 }),
+  ],
 };
 
 const RULE_SET: Record<ServiceBranch, keyof typeof RULES> = {
   육군: "army",
   해병대: "army",
+  카투사: "army",
   해군: "navy",
   공군: "airforce",
+  공익: "social",
 };
 
-export function serviceLength(branch: ServiceBranch, enlist: Date): ServiceLength {
+export function serviceLength(
+  branch: ServiceBranch,
+  enlist: Date,
+): ServiceLength {
   for (const rule of RULES[RULE_SET[branch]]) {
     const hit = rule(enlist);
     if (hit) return hit;
@@ -119,4 +167,6 @@ export const CURRENT_MONTHS: Record<ServiceBranch, number> = {
   해군: 20,
   공군: 21,
   해병대: 18,
+  카투사: 18,
+  공익: 21,
 };

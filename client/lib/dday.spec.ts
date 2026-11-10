@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { format, parseISO } from "date-fns";
 import { computeService } from "./service";
-import { dLabel, ddayStatus, halfwayDate, isLockedRank } from "./dday";
+import {
+  dLabel,
+  ddayStatus,
+  halfwayDate,
+  isLockedRank,
+  reserveLabel,
+} from "./dday";
 
 const day = (s: string) => parseISO(s);
 const fmt = (d: Date) => format(d, "yyyy-MM-dd");
@@ -63,16 +69,50 @@ describe("ddayStatus (done)", () => {
     const s = ddayStatus(plan, day("2026-11-06"));
     if (s.status !== "done") throw new Error(s.status);
     expect(s.daysSince).toBe(792);
-    expect(s.anniversaries.map((m) => [m.label, fmt(m.date), m.daysLeft])).toEqual([
+    // 2024 전역: 2025 1년차 … 2032 8년차, 2033 민방위
+    expect(reserveLabel(s.reserve)).toBe("예비군 2년차");
+    expect(
+      s.anniversaries.map((m) => [m.label, fmt(m.date), m.daysLeft]),
+    ).toEqual([
+      ["예비군 3년차", "2027-01-01", 56],
       ["입대 4주년", "2027-03-06", 120],
       ["전역 3주년", "2027-09-05", 303],
+      ["예비군 끝", "2032-12-31", 2247],
+      ["민방위 시작", "2033-01-01", 2248],
     ]);
+  });
+
+  it("follows 예비군 years into 민방위", () => {
+    const at = (today: string) => {
+      const s = ddayStatus(plan, day(today));
+      if (s.status !== "done") throw new Error(s.status);
+      return {
+        now: reserveLabel(s.reserve),
+        labels: s.anniversaries.map((m) => m.label),
+      };
+    };
+    // 전역한 해: 1년차는 다음 해부터 (병무청 예시: '24년 전역 → '25년 1년차)
+    expect(at("2024-10-01").now).toBe("예비군 편성");
+    expect(at("2024-10-01").labels).toContain("예비군 1년차");
+    // 7년차: 8년차와 끝, 민방위 시작이 함께
+    expect(at("2031-06-01").labels).toEqual(
+      expect.arrayContaining(["예비군 8년차", "예비군 끝", "민방위 시작"]),
+    );
+    // 8년차 마지막 날까지 예비군
+    expect(at("2032-12-31").now).toBe("예비군 8년차");
+    expect(at("2032-12-31").labels).not.toContain("예비군 9년차");
+    expect(at("2033-01-01").now).toBe("민방위 1년차");
+    expect(at("2033-01-01").labels).toContain("민방위 2년차");
+    expect(at("2033-01-01").labels).not.toContain("예비군 끝");
   });
 
   it("shows today's anniversary as D-day", () => {
     const s = ddayStatus(plan, day("2025-09-05"));
     if (s.status !== "done") throw new Error(s.status);
-    expect(s.anniversaries[0]).toMatchObject({ label: "전역 1주년", daysLeft: 0 });
+    expect(s.anniversaries[0]).toMatchObject({
+      label: "전역 1주년",
+      daysLeft: 0,
+    });
   });
 });
 
@@ -84,7 +124,9 @@ describe("ddayStatus (notYet)", () => {
   it("counts down to enlistment and lists the whole schedule", () => {
     if (s.status !== "notYet") throw new Error(s.status);
     expect(s.daysLeft).toBe(113);
-    expect(s.dischargeDaysLeft).toBe(s.upcoming[s.upcoming.length - 1].daysLeft);
+    expect(s.dischargeDaysLeft).toBe(
+      s.upcoming[s.upcoming.length - 1].daysLeft,
+    );
     expect(s.upcoming.map((m) => m.label)).toEqual([
       "입대",
       "일병 진급",

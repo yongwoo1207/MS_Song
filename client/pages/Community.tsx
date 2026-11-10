@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { Check, ChevronDown, MessagesSquare, PenLine } from "lucide-react";
+import { MessagesSquare, PenLine } from "lucide-react";
 import { toast } from "sonner";
 import MobileShell from "@/components/ipdae/MobileShell";
 import BottomNav from "@/components/ipdae/BottomNav";
@@ -9,12 +9,6 @@ import MemoryItem from "@/components/ipdae/MemoryItem";
 import PostComposer from "@/components/ipdae/PostComposer";
 import SongPlayer from "@/components/ipdae/SongPlayer";
 import TalkItem from "@/components/ipdae/TalkItem";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerTitle,
-} from "@/components/ui/drawer";
 import { useServicePlan } from "@/hooks/useServicePlan";
 import { useCommunityFeed } from "@/hooks/useCommunityFeed";
 import {
@@ -28,18 +22,15 @@ import {
 import { dLabel, ddayStatus } from "@/lib/dday";
 import {
   COMMUNITY_MAX_LENGTH,
-  type FeedFilter,
   type Memory,
   TITLE_MAX_LENGTH,
   authorLine,
   writerOf,
 } from "@/lib/memories";
 import { TALK_MAX_LENGTH } from "@/lib/talks";
-import { RANKS, type ServicePlan } from "@/lib/service";
+import type { ServicePlan } from "@/lib/service";
 import { FEED_TOPICS, type SongRef } from "@shared/posts";
 import { cn } from "@/lib/utils";
-
-const WRITER_FILTERS = [...RANKS, "예비역", "입대 예정"] as const;
 
 type Status = ReturnType<typeof ddayStatus>;
 type Who = "reserve" | "serving" | "pre";
@@ -91,12 +82,6 @@ const whoOf = (status: Status): Who =>
       ? "serving"
       : "pre";
 
-function filterNote(filter: FeedFilter) {
-  if (filter === "예비역") return "예비역이 쓴 것만 보여요.";
-  if (filter === "입대 예정") return "입대 예정자가 쓴 것만 보여요.";
-  return `${filter} 때 쓴 글과 ${filter} 시절 노래 댓글만 보여요.`;
-}
-
 function Board({
   topic,
   plan,
@@ -108,9 +93,7 @@ function Board({
 }) {
   const navigate = useNavigate();
   const { search } = useLocation();
-  const [filter, setFilter] = useState<FeedFilter>(null);
-  const [picker, setPicker] = useState(false);
-  const feed = useCommunityFeed(topic.key, filter);
+  const feed = useCommunityFeed(topic.key);
   // The song memory being listened to
   const [song, setSong] = useState<SongRef | null>(null);
   const closeSong = useCallback(() => setSong(null), []);
@@ -151,14 +134,10 @@ function Board({
             {t.label}
           </Chip>
         ))}
-        <span aria-hidden="true" className="mx-0.5 my-2 w-px bg-border" />
-        <Chip on={!!filter} onClick={() => setPicker(true)} hasMenu>
-          {filter ?? "계급"}
-        </Chip>
       </div>
 
       <p className="px-4 pb-2 text-xs leading-normal text-ink-icon">
-        {filter ? filterNote(filter) : topic.note}
+        {topic.note}
       </p>
 
       <main className="flex flex-1 flex-col gap-2 px-4 pb-24">
@@ -195,7 +174,6 @@ function Board({
                     onSuccess: () => {
                       done();
                       setWriting(false);
-                      setFilter(null);
                       // Show it: move to 전체 when this topic doesn't list it
                       const kinds: readonly string[] = FEED_TOPICS[topic.key];
                       if (!kinds.includes(kind)) goTopic(TOPICS[0]);
@@ -280,29 +258,6 @@ function Board({
         <WriteButton onClick={openComposer} controls="community-composer" />
       )}
 
-      <Drawer open={picker} onOpenChange={setPicker}>
-        <DrawerContent className="mx-auto max-w-[430px] px-4 pb-8">
-          <DrawerTitle className="pt-4 text-base">계급 선택</DrawerTitle>
-          <DrawerDescription className="pb-3 text-xs">
-            그 계급 때 쓴 글과 그 시절 노래 댓글만 보여요.
-          </DrawerDescription>
-          <ul className="flex flex-col gap-1.5">
-            {WRITER_FILTERS.map((r) => (
-              <PickerRow
-                key={r}
-                on={filter === r}
-                onClick={() => {
-                  setFilter(filter === r ? null : r);
-                  setPicker(false);
-                }}
-              >
-                {r}
-              </PickerRow>
-            ))}
-          </ul>
-        </DrawerContent>
-      </Drawer>
-
       <ConfirmDelete
         what={deleting?.kind === "record" ? "댓글" : "글"}
         open={!!deleting}
@@ -346,20 +301,17 @@ function WriteButton({
 function Chip({
   on,
   onClick,
-  hasMenu,
   children,
 }: {
   on: boolean;
   onClick: () => void;
-  hasMenu?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-pressed={hasMenu ? undefined : on}
-      aria-haspopup={hasMenu ? "dialog" : undefined}
+      aria-pressed={on}
       className={cn(
         "flex h-[34px] items-center gap-1 whitespace-nowrap rounded-full border px-3.5 text-[12.5px] font-bold",
         on
@@ -368,46 +320,6 @@ function Chip({
       )}
     >
       {children}
-      {hasMenu && (
-        <ChevronDown
-          className="size-3.5"
-          strokeWidth={2.4}
-          aria-hidden="true"
-        />
-      )}
     </button>
-  );
-}
-
-function PickerRow({
-  on,
-  onClick,
-  children,
-}: {
-  on: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onClick}
-        aria-pressed={on}
-        className={cn(
-          "flex h-12 w-full items-center gap-2.5 rounded-xl border px-3.5 text-left text-[15px] font-bold",
-          on ? "border-primary bg-accent" : "border-border bg-card",
-        )}
-      >
-        <span className="flex flex-1 items-center gap-2.5">{children}</span>
-        {on && (
-          <Check
-            className="size-[18px] text-primary"
-            strokeWidth={2.4}
-            aria-hidden="true"
-          />
-        )}
-      </button>
-    </li>
   );
 }

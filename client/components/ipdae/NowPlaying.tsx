@@ -160,7 +160,7 @@ export default function NowPlaying({
         <MemoriesPanel
           song={{ key, title: song.title, artist: song.artist }}
           rank={queue.rank}
-          aboutMonth={queue.month ?? monthParam(song.bestMonth)}
+          aboutMonth={monthParam(song.bestMonth)}
           author={author}
           onClose={() => setMemoriesOpen(false)}
         />

@@ -6,9 +6,6 @@ export interface PlayerQueue {
   /** The listener's rank for these songs ("일병 시절") */
   rank: Rank;
   songs: RankedChartSong[];
-  /** 'YYYY-MM' when the queue is one chart month (timeline); memories
-   *  written from it file under that month. */
-  month?: string;
 }
 
 /** Queue + transport state for the in-page YouTube player. */

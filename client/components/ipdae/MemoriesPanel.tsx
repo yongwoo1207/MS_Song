@@ -17,7 +17,7 @@ interface MemoriesPanelProps {
   song: SongRef;
   /** The rank tab the song was played from: "일병 시절" */
   rank: PostRank;
-  /** 'YYYY-MM' the memory files under on the timeline */
+  /** 'YYYY-MM' chart month the memory is about */
   aboutMonth: string;
   author: MemoryAuthor;
   onClose: () => void;

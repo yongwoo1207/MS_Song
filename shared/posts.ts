@@ -8,7 +8,14 @@
  */
 
 export const POST_RANKS = ["이병", "일병", "상병", "병장"] as const;
-export const POST_BRANCHES = ["육군", "해군", "공군", "해병대"] as const;
+export const POST_BRANCHES = [
+  "육군",
+  "해군",
+  "공군",
+  "해병대",
+  "카투사",
+  "공익",
+] as const;
 export const REPORT_REASONS = ["보안", "욕설·비방", "광고", "기타"] as const;
 
 export const RECORD_MAX_LENGTH = 300;
@@ -43,17 +50,6 @@ export interface SongRef {
   key: string; // "artist|title"
   title: string;
   artist: string;
-}
-
-/** A major issue (사건) of a month, operator-curated (db/events.sql). */
-export interface ApiEvent {
-  id: string; // slug, e.g. 'covid-leave-ban'
-  title: string;
-  month: string; // 'YYYY-MM'
-  date: string | null; // 'YYYY-MM-DD' when the day is known
-  summary: string; // facts only
-  scope: string; // '전 군종', '육군' …
-  sourceUrl: string | null;
 }
 
 interface AuthorFields {

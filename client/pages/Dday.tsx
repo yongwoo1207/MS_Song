@@ -21,7 +21,7 @@ import {
 import { useServicePlan } from "@/hooks/useServicePlan";
 import { useChartDB } from "@/hooks/useRankChart";
 import { useSaveEnlistment } from "@/hooks/useSavedEnlistment";
-import { dLabel, ddayStatus } from "@/lib/dday";
+import { dLabel, ddayStatus, reserveLabel } from "@/lib/dday";
 
 export default function Dday() {
   const { plan, setOverrides } = useServicePlan();
@@ -71,6 +71,7 @@ export default function Dday() {
                 </button>
               }
             />
+            <RankTopSongs plan={plan} listenAll />
             <SongsShortcut rank={status.current.rank} />
           </>
         )}
@@ -86,6 +87,11 @@ export default function Dday() {
             <MilestoneList
               title="다가오는 기념일"
               items={status.anniversaries}
+              action={
+                <span className="text-xs font-bold text-primary">
+                  지금 {reserveLabel(status.reserve)}
+                </span>
+              }
             />
             <RankTopSongs plan={plan} listenAll />
           </>

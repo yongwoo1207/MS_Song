@@ -11,7 +11,15 @@ import {
 
 import { CURRENT_MONTHS, dischargeDate, serviceLength } from "./serviceLength";
 
-export const BRANCHES = ["육군", "해군", "공군", "해병대"] as const;
+/** 군 종류. 카투사는 육군과, 공익(사회복무요원)은 별도 일정으로 센다. */
+export const BRANCHES = [
+  "육군",
+  "해군",
+  "공군",
+  "해병대",
+  "카투사",
+  "공익",
+] as const;
 export type Branch = (typeof BRANCHES)[number];
 
 /** Service length for someone enlisting today, in months. */
@@ -96,7 +104,13 @@ export function computeService(
     const start = starts[i];
     const end = i < 3 ? subDays(starts[i + 1], 1) : discharge;
     const days = differenceInCalendarDays(end, start) + 1;
-    return { rank, start, end, days, months: Math.max(1, Math.round(days / 30.44)) };
+    return {
+      rank,
+      start,
+      end,
+      days,
+      months: Math.max(1, Math.round(days / 30.44)),
+    };
   });
 
   return {
@@ -139,8 +153,12 @@ export function chartRange(
   period: Pick<RankPeriod, "start" | "end">,
 ): { from: string; to: string } | null {
   const { start, end } = period;
-  const first = start.getDate() <= START_CUTOFF_DAY ? start : addMonths(startOfMonth(start), 1);
-  const last = end.getDate() >= END_CUTOFF_DAY ? end : subMonths(startOfMonth(end), 1);
+  const first =
+    start.getDate() <= START_CUTOFF_DAY
+      ? start
+      : addMonths(startOfMonth(start), 1);
+  const last =
+    end.getDate() >= END_CUTOFF_DAY ? end : subMonths(startOfMonth(end), 1);
   if (startOfMonth(last) < startOfMonth(first)) return null;
   return { from: chartKey(first), to: chartKey(last) };
 }

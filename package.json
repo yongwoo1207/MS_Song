@@ -19,10 +19,8 @@
     "test": "vitest --run",
     "format.fix": "prettier --write .",
     "typecheck": "tsc && tsc -p worker",
-    "dev:api": "node -e \"require('fs').mkdirSync('dist/spa',{recursive:true})\" && wrangler d1 migrations apply DB --local && wrangler d1 execute DB --local --file db/events.sql && wrangler dev --port 8787",
+    "dev:api": "node -e \"require('fs').mkdirSync('dist/spa',{recursive:true})\" && wrangler d1 migrations apply DB --local && wrangler dev --port 8787",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
-    "db:events": "wrangler d1 execute DB --local --file db/events.sql",
-    "db:events:remote": "wrangler d1 execute DB --remote --file db/events.sql",
     "deploy": "npm run build:client && wrangler deploy"
   },
   "dependencies": {

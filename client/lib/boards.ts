@@ -45,7 +45,7 @@ export const TOPICS: BoardTopic[] = [
     label: "음악",
     path: "/community/music",
     note: "노래에 남긴 댓글이에요. 노래를 누르면 들을 수 있어요.",
-    empty: "입대곡이나 타임라인에서 노래를 틀고 댓글을 남겨보세요.",
+    empty: "차트에서 노래를 틀고 댓글을 남겨보세요.",
     writes: "post",
   },
   {
