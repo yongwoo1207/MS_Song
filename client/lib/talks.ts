@@ -16,6 +16,13 @@ import {
 
 export { TALK_MAX_LENGTH, REPLY_MAX_LENGTH };
 
+export type TalkWho = "reserve" | "serving" | "pre";
+const WHO_PARAM: Record<TalkWho, string> = {
+  reserve: "1",
+  serving: "0",
+  pre: "pre",
+};
+
 export interface Thread {
   post: Memory;
   replies: Memory[];
@@ -29,13 +36,13 @@ const page = async (q: URLSearchParams): Promise<MemoryPage> => {
 };
 
 export const talkApi = {
-  /** Newest first; `reserve` true only by 예비역, false only by 현역. */
-  list(opts: { before?: string; reserve?: boolean; limit?: number } = {}) {
+  /** Newest first; `who` only 예비역's, 현역's or 입대 예정자's. */
+  list(opts: { before?: string; who?: TalkWho; limit?: number } = {}) {
     const q = new URLSearchParams({
       kind: "talk",
       limit: `${opts.limit ?? 20}`,
     });
-    if (opts.reserve !== undefined) q.set("reserve", opts.reserve ? "1" : "0");
+    if (opts.who) q.set("reserve", WHO_PARAM[opts.who]);
     if (opts.before) q.set("before", opts.before);
     return page(q);
   },
@@ -60,12 +67,19 @@ export const talkApi = {
     });
     return data.post;
   },
-  async reply(input: { parentId: string; body: string; author: MemoryAuthor }) {
+  /** A 댓글 under a thread, or a 대댓글 when `replyTo` is a 댓글. */
+  async reply(input: {
+    parentId: string;
+    replyTo?: string | null;
+    body: string;
+    author: MemoryAuthor;
+  }) {
     const data = await apiCall<{ post: Memory }>("/api/posts", {
       method: "POST",
       body: JSON.stringify({
         kind: "reply",
         parentId: input.parentId,
+        replyTo: input.replyTo ?? null,
         body: input.body,
         ...input.author,
       }),
@@ -73,3 +87,26 @@ export const talkApi = {
     return data.post;
   },
 };
+
+/** A top-level 댓글 and the 대댓글 under it. `top` is null once deleted. */
+export interface CommentGroup {
+  id: string;
+  top: Memory | null;
+  answers: Memory[];
+}
+
+/** Replies, oldest first → each 댓글 followed by its 대댓글. */
+export function groupReplies(replies: Memory[]): CommentGroup[] {
+  const groups = new Map<string, CommentGroup>();
+  for (const r of replies) {
+    const id = r.replyTo ?? r.id;
+    let g = groups.get(id);
+    if (!g) {
+      g = { id, top: null, answers: [] };
+      groups.set(id, g);
+    }
+    if (r.replyTo) g.answers.push(r);
+    else g.top = r;
+  }
+  return [...groups.values()];
+}

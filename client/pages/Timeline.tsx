@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { ExternalLink, Heart, MessageCircle } from "lucide-react";
-import { toast } from "sonner";
+import { ExternalLink } from "lucide-react";
 import type { ChartDB, ChartSong } from "@shared/api";
 import MobileShell from "@/components/ipdae/MobileShell";
 import AppHeader from "@/components/ipdae/AppHeader";
@@ -12,25 +11,15 @@ import { PlayIcon } from "@/components/ipdae/icons";
 import { useServicePlan } from "@/hooks/useServicePlan";
 import { usePlayer, type Player } from "@/hooks/usePlayer";
 import { useChartDB } from "@/hooks/useRankChart";
-import { useTimeline } from "@/hooks/useTimeline";
 import { useEvents } from "@/hooks/useEvents";
-import { ddayStatus } from "@/lib/dday";
 import { type ServiceEvent, eventDateLabel } from "@/lib/events";
-import {
-  type Memory,
-  type MemoryAuthor,
-  cohortLabel,
-  cohortMonthOf,
-} from "@/lib/memories";
+import { writerOf } from "@/lib/memories";
 import { type ServiceMonth, asMonthSong, serviceMonths } from "@/lib/timeline";
-import { cn } from "@/lib/utils";
-
-const SONG_PREVIEW = 2; // song memories shown per month before "모두 보기"
 
 /**
  * 타임라인: the user's service month by month. Each chapter shows that
- * month's #1 song, its major issues (사건) and the memories people left on
- * that month's songs. Nothing is written here directly. A bar of the whole
+ * month's #1 song and its major issues (사건). Memories left on songs live
+ * in 커뮤니티 > 음악, not here. A bar of the whole
  * service stays pinned on top and follows the chapter being read.
  */
 export default function Timeline() {
@@ -38,7 +27,6 @@ export default function Timeline() {
   const player = usePlayer();
   const chart = useChartDB();
   const months = useMemo(() => (plan ? serviceMonths(plan) : []), [plan]);
-  const cohortMonth = plan ? cohortMonthOf(plan.enlist) : "";
   const range =
     months.length > 0
       ? {
@@ -46,8 +34,6 @@ export default function Timeline() {
           to: months[months.length - 1].param,
         }
       : null;
-  const { songsByMonth, isLoading, isError, refetch, remove, like } =
-    useTimeline(range);
   const events = useEvents(range);
   const eventMonths = useMemo(
     () => new Set(events.data ? [...events.data.keys()] : []),
@@ -124,15 +110,7 @@ export default function Timeline() {
 
   if (!plan) return <Navigate to="/" replace />;
 
-  const author: MemoryAuthor = {
-    cohortMonth,
-    branch: plan.branch,
-    isReserve: ddayStatus(plan).status === "done",
-  };
-  const total = songsByMonth
-    ? [...songsByMonth.values()].reduce((n, list) => n + list.length, 0)
-    : 0;
-  const onError = (err: Error) => toast(err.message);
+  const author = writerOf(plan);
 
   return (
     <MobileShell>
@@ -151,23 +129,8 @@ export default function Timeline() {
       <p className="px-4 pb-2 pt-2 text-xs leading-normal text-ink-icon">
         {months.length === 0
           ? "입대하면 달마다 챕터가 생겨요."
-          : isLoading
-            ? "불러오는 중…"
-            : `달마다 그 달 1위곡과 주요 이슈, 그 달 노래에 남겨진 추억을 모았어요${total ? ` · 추억 ${total}개` : ""}.`}
+          : "달마다 그 달 1위곡과 주요 이슈를 모았어요."}
       </p>
-
-      {isError && (
-        <div className="mx-4 mb-2 flex items-center justify-between gap-2 rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-muted-foreground">
-          추억을 불러오지 못했어요.
-          <button
-            type="button"
-            onClick={() => refetch()}
-            className="h-8 rounded-lg border bg-card px-3 text-xs font-bold text-primary"
-          >
-            다시 시도
-          </button>
-        </div>
-      )}
 
       <main className="flex flex-col gap-2.5 px-4 pb-6">
         {months.map((m, i) => (
@@ -179,10 +142,7 @@ export default function Timeline() {
             month={m}
             chart={chart.data}
             events={events.data?.get(m.param) ?? []}
-            songMemories={songsByMonth?.get(m.param) ?? []}
             player={player}
-            onLike={(id) => like.mutate(id, { onError })}
-            onDelete={(id) => remove.mutate(id, { onError })}
           />
         ))}
       </main>
@@ -197,26 +157,15 @@ function MonthChapter({
   month,
   chart,
   events,
-  songMemories,
   player,
-  onLike,
-  onDelete,
 }: {
   sectionRef: (el: HTMLElement | null) => void;
   month: ServiceMonth;
   chart: ChartDB | undefined;
   events: ServiceEvent[];
-  /** Memories left on songs, filed under this month's chart */
-  songMemories: Memory[];
   player: Player;
-  onLike: (id: string) => void;
-  onDelete: (id: string) => void;
 }) {
-  const [songsExpanded, setSongsExpanded] = useState(false);
   const top = chart?.[month.key]?.songs.find((s) => s.rank === 1);
-  const songsShown = songsExpanded
-    ? songMemories
-    : songMemories.slice(0, SONG_PREVIEW);
 
   const play = (song: ChartSong) =>
     player.play(
@@ -310,98 +259,6 @@ function MonthChapter({
           </ul>
         </div>
       )}
-
-      {songMemories.length > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <h3 className="flex items-center gap-1 text-[11.5px] font-bold text-ink-icon">
-            <MessageCircle
-              className="size-3.5"
-              strokeWidth={2.2}
-              aria-hidden="true"
-            />
-            이 달 노래에 남긴 추억 {songMemories.length}
-          </h3>
-          <ul className="flex flex-col rounded-xl bg-background px-3 py-2">
-            {songsShown.map((m) => (
-              <SongMemoryRow
-                key={m.id}
-                memory={m}
-                onLike={() => onLike(m.id)}
-                onDelete={() => onDelete(m.id)}
-              />
-            ))}
-          </ul>
-          {songMemories.length > SONG_PREVIEW && (
-            <button
-              type="button"
-              onClick={() => setSongsExpanded((v) => !v)}
-              aria-expanded={songsExpanded}
-              className="h-8 rounded-xl text-[12px] font-bold text-primary"
-            >
-              {songsExpanded
-                ? "접기"
-                : `노래 추억 ${songMemories.length}개 모두 보기`}
-            </button>
-          )}
-        </div>
-      )}
     </section>
-  );
-}
-
-function SongMemoryRow({
-  memory: m,
-  onLike,
-  onDelete,
-}: {
-  memory: Memory;
-  onLike: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <li className="flex flex-col gap-1 border-t border-muted py-2.5 first:border-t-0 first:pt-0.5">
-      {m.song && (
-        <span className="truncate text-[12px] font-bold text-primary">
-          ♪ {m.song.title} · {m.song.artist}
-        </span>
-      )}
-      <span className="text-[11px] text-ink-icon">
-        {cohortLabel(m.cohortMonth)} · 당시 {m.rank}
-        {m.isReserve ? " · 예비역" : ""}
-        {m.mine ? " · 내 글" : ""}
-      </span>
-      <p className="whitespace-pre-wrap break-words text-[13.5px] leading-relaxed">
-        {m.body}
-      </p>
-      <div className="flex items-center">
-        <button
-          type="button"
-          onClick={onLike}
-          aria-pressed={m.likedByMe}
-          aria-label={`공감 ${m.likes}`}
-          className={cn(
-            "-ml-1 flex h-7 items-center gap-1 rounded-lg px-1 text-xs",
-            m.likedByMe ? "text-primary" : "text-muted-foreground",
-          )}
-        >
-          <Heart
-            className={cn("size-3.5", m.likedByMe && "fill-current")}
-            strokeWidth={2}
-            aria-hidden="true"
-          />
-          {m.likes}
-        </button>
-        <span className="flex-1" />
-        {m.mine && (
-          <button
-            type="button"
-            onClick={onDelete}
-            className="h-7 rounded-lg px-1 text-xs text-muted-foreground hover:text-destructive"
-          >
-            삭제
-          </button>
-        )}
-      </div>
-    </li>
   );
 }

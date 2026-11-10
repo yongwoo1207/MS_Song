@@ -56,7 +56,7 @@ export default function Dday() {
               status={status}
               onSaveImage={() => setSnapshot(true)}
             />
-            <TalkLinkCard reserve={false} />
+            <TalkLinkCard who="serving" />
             <MilestoneList
               title="다가오는 날"
               items={status.upcoming}
@@ -82,7 +82,7 @@ export default function Dday() {
               status={status}
               onSaveImage={() => setSnapshot(true)}
             />
-            <TalkLinkCard reserve />
+            <TalkLinkCard who="reserve" />
             <MilestoneList
               title="다가오는 기념일"
               items={status.anniversaries}
@@ -112,9 +112,9 @@ export default function Dday() {
                 </button>
               }
             />
+            <TalkLinkCard who="pre" />
             <p className="rounded-2xl border bg-card px-4 py-3.5 text-[13px] leading-relaxed text-muted-foreground">
-              입대하면 계급마다 그 시절 차트가 쌓이고, 커뮤니티에서 예비역
-              선배들과 이야기할 수 있어요.
+              입대하면 계급마다 그 시절 차트가 쌓여요.
             </p>
           </>
         )}

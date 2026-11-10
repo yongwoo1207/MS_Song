@@ -6,23 +6,21 @@ import {
 } from "@tanstack/react-query";
 import { invalidatePosts } from "./postsCache";
 import { memoryStore, type MemoryAuthor } from "@/lib/memories";
-import { talkApi } from "@/lib/talks";
+import { type TalkWho, talkApi } from "@/lib/talks";
 import type { PostRank } from "@shared/posts";
 
 /**
- * 선후임 소통 글, newest first, 20 at a time. `reserve`: true only 예비역's,
- * false only 현역's, undefined both.
+ * 선후임 소통 글, newest first, 20 at a time. `who`: only 예비역's, 현역's
+ * or 입대 예정자's; undefined all.
  */
 export function useTalks({
-  reserve,
+  who,
   limit,
-}: { reserve?: boolean; limit?: number } = {}) {
+}: { who?: TalkWho; limit?: number } = {}) {
   const qc = useQueryClient();
-  const who = reserve === undefined ? "all" : reserve ? "reserve" : "serving";
   const list = useInfiniteQuery({
-    queryKey: ["talks", who, limit ?? 20],
-    queryFn: ({ pageParam }) =>
-      talkApi.list({ reserve, limit, before: pageParam }),
+    queryKey: ["talks", who ?? "all", limit ?? 20],
+    queryFn: ({ pageParam }) => talkApi.list({ who, limit, before: pageParam }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next ?? undefined,
     staleTime: 30_000,
@@ -49,7 +47,7 @@ export function useTalks({
   };
 }
 
-/** One 소통 글 with its replies, plus reply / delete / like. */
+/** One 커뮤니티 글 or 소통 글 with its 댓글, plus reply / delete / like. */
 export function useThread(id: string | undefined) {
   const qc = useQueryClient();
   const thread = useQuery({
@@ -61,8 +59,11 @@ export function useThread(id: string | undefined) {
   });
   const refresh = () => invalidatePosts(qc);
   const reply = useMutation({
-    mutationFn: (input: { body: string; author: MemoryAuthor }) =>
-      talkApi.reply({ parentId: id!, ...input }),
+    mutationFn: (input: {
+      body: string;
+      author: MemoryAuthor;
+      replyTo?: string | null;
+    }) => talkApi.reply({ parentId: id!, ...input }),
     onSuccess: refresh,
   });
   const remove = useMutation({

@@ -52,6 +52,9 @@ describe("notificationText", () => {
       "내 소통 글에 2명이 댓글을 달았어요",
     );
     expect(notificationHref(answered)).toBe("/talk/1");
+    expect(notificationText(like({ kind: "reply" }, 1, "reply"))).toBe(
+      "내 댓글에 1명이 답글을 달았어요",
+    );
     expect(notificationHref(like({ kind: "reply", parentId: "t9" }))).toBe(
       "/talk/t9",
     );
@@ -60,7 +63,12 @@ describe("notificationText", () => {
 });
 
 describe("postContext", () => {
-  const base = { kind: "post", song: null, title: null } as const;
+  const base = {
+    kind: "post",
+    song: null,
+    title: null,
+    replyTo: null,
+  } as const;
   it("says where a post lives", () => {
     expect(
       postContext({
@@ -73,6 +81,8 @@ describe("postContext", () => {
       "커뮤니티 · 휴가 계획",
     );
     expect(postContext({ ...base, kind: "talk" })).toBe("선후임 소통 글");
+    expect(postContext({ ...base, kind: "reply" })).toBe("댓글");
+    expect(postContext({ ...base, kind: "reply", replyTo: "c1" })).toBe("답글");
     expect(postContext({ ...base, kind: "reply" })).toBe("댓글");
   });
 });
@@ -105,21 +115,28 @@ describe("activity API", () => {
     });
     await apiMemoryStore.listMine();
     await apiMemoryStore.toggleSongLike("a|b");
-    await apiMemoryStore.feed("일병", "c");
-    await talkApi.list({ reserve: true });
+    await apiMemoryStore.feed("music", "일병", "c");
+    await talkApi.list({ who: "reserve" });
+    await talkApi.list({ who: "pre" });
     await apiMemoryStore.addPost({
       title: "제목",
       body: "그때",
       rank: null,
-      author: { cohortMonth: "2021-03", branch: "육군", isReserve: true },
+      author: {
+        cohortMonth: "2021-03",
+        branch: "육군",
+        isReserve: false,
+        daysToEnlist: 23,
+      },
     });
     expect(fetch.mock.calls.map((c) => c[0])).toEqual([
       "/api/notifications?count=1",
       "/api/song-counts",
       "/api/me/posts",
       "/api/songs/like",
-      `/api/posts?feed=community&limit=20&rank=${encodeURIComponent("일병")}&before=c`,
+      `/api/posts?feed=music&limit=20&rank=${encodeURIComponent("일병")}&before=c`,
       "/api/posts?kind=talk&limit=20&reserve=1",
+      "/api/posts?kind=talk&limit=20&reserve=pre",
       "/api/posts",
     ]);
     expect(
@@ -133,7 +150,8 @@ describe("activity API", () => {
       rank: null,
       cohortMonth: "2021-03",
       branch: "육군",
-      isReserve: true,
+      isReserve: false,
+      daysToEnlist: 23,
     });
   });
 });

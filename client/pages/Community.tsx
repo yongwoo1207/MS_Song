@@ -21,12 +21,12 @@ import { useTalks } from "@/hooks/useTalks";
 import { dLabel, ddayStatus } from "@/lib/dday";
 import {
   COMMUNITY_MAX_LENGTH,
+  type FeedTopic,
   TITLE_MAX_LENGTH,
-  type MemoryAuthor,
-  cohortLabel,
-  cohortMonthOf,
+  authorLine,
+  writerOf,
 } from "@/lib/memories";
-import { TALK_MAX_LENGTH } from "@/lib/talks";
+import { TALK_MAX_LENGTH, type TalkWho } from "@/lib/talks";
 import { RANKS, type ServicePlan } from "@/lib/service";
 import type { SongRef } from "@shared/posts";
 import { cn } from "@/lib/utils";
@@ -37,17 +37,24 @@ type RankFilter = (typeof RANK_FILTERS)[number];
 type Status = ReturnType<typeof ddayStatus>;
 
 /**
- * 커뮤니티, two tabs:
- *  - 이야기 (/community): 커뮤니티 글 and memories left under songs, newest
- *    first, filtered by rank (which 시절 it is about) or to 예비역 only.
- *  - 선후임 소통 (/community/talk): 현역 and 예비역 write to each other and
- *    reply under each post. The home's 한마디 cards open this tab.
+ * 커뮤니티, three tabs:
+ *  - 이야기 (/community): 커뮤니티 글, free posts that open into their 댓글.
+ *  - 음악 (/community/music): memories (댓글) left under songs; tapping the
+ *    song plays it.
+ *  - 선후임 소통 (/community/talk): 현역, 예비역 and 입대 예정자 write to
+ *    each other. The home's 한마디 cards open this tab.
+ * The first two filter by rank or to 예비역 only. 입대 예정자 write too,
+ * shown as "입대 23일 전".
  */
 export default function Community() {
   const { plan } = useServicePlan();
   const status = useMemo(() => (plan ? ddayStatus(plan) : null), [plan]);
   const { pathname, search } = useLocation();
-  const talk = pathname.startsWith("/community/talk");
+  const tab = pathname.startsWith("/community/talk")
+    ? "talk"
+    : pathname.startsWith("/community/music")
+      ? "music"
+      : "story";
 
   if (!plan || !status) return <Navigate to="/" replace />;
 
@@ -66,18 +73,28 @@ export default function Community() {
       </header>
 
       <nav className="flex gap-4 border-b px-5" aria-label="커뮤니티 탭">
-        <Tab to={`/community${search}`} on={!talk}>
+        <Tab to={`/community${search}`} on={tab === "story"}>
           이야기
         </Tab>
-        <Tab to={`/community/talk${search}`} on={talk}>
+        <Tab to={`/community/music${search}`} on={tab === "music"}>
+          음악
+        </Tab>
+        <Tab to={`/community/talk${search}`} on={tab === "talk"}>
           선후임 소통
         </Tab>
       </nav>
 
-      {talk ? (
+      {tab === "talk" ? (
         <TalkSpace plan={plan} status={status} search={search} />
       ) : (
-        <StoryFeed plan={plan} status={status} search={search} />
+        // Keyed so each board keeps its own filter and player
+        <Board
+          key={tab}
+          topic={tab}
+          plan={plan}
+          status={status}
+          search={search}
+        />
       )}
 
       <BottomNav />
@@ -85,49 +102,54 @@ export default function Community() {
   );
 }
 
-function authorOf(plan: ServicePlan, status: Status): MemoryAuthor {
-  return {
-    cohortMonth: cohortMonthOf(plan.enlist),
-    branch: plan.branch,
-    isReserve: status.status === "done",
-  };
-}
+/** A rank of 현역 now, null for 예비역 and 입대 예정자. */
+const rankNow = (status: Status) =>
+  status.status === "serving" ? status.current.rank : null;
 
-/** 이야기: 커뮤니티 글 and song memories. */
-function StoryFeed({
+/** 이야기 (커뮤니티 글, written here) or 음악 (memories under songs). */
+function Board({
+  topic,
   plan,
   status,
   search,
 }: {
+  topic: FeedTopic;
   plan: ServicePlan;
   status: Status;
   search: string;
 }) {
+  const music = topic === "music";
   const [rank, setRank] = useState<RankFilter | null>(null);
   // The song memory being listened to
   const [song, setSong] = useState<SongRef | null>(null);
   const closeSong = useCallback(() => setSong(null), []);
   const [picker, setPicker] = useState(false);
-  const feed = useCommunityFeed(rank);
+  const feed = useCommunityFeed(topic, rank);
   const [writing, setWriting] = useState(false);
   // Asked in a dialog first (see ConfirmDelete)
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  const canWrite = status.status !== "notYet";
-  // A post carries the writer's rank now (none for 예비역)
-  const myRank = status.status === "serving" ? status.current.rank : null;
-  const author = authorOf(plan, status);
+  // 음악 is written from the song screens (입대곡 · 타임라인 player)
+  const canWrite = !music;
+  // A post carries the writer's rank now (none for 예비역, 입대 예정자)
+  const myRank = rankNow(status);
+  const author = writerOf(plan);
   const openComposer = () => {
     setWriting(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const note =
-    rank === "예비역"
+  const note = music
+    ? rank === "예비역"
+      ? "예비역이 노래에 남긴 댓글만 보여요."
+      : rank
+        ? `${rank} 시절 노래에 남긴 댓글만 보여요.`
+        : "노래에 남긴 댓글이 최신순으로 모여요. 노래를 누르면 들을 수 있어요."
+    : rank === "예비역"
       ? "예비역이 쓴 글만 보여요."
       : rank
-        ? `${rank} 때 쓴 글과 ${rank} 시절 노래 추억만 보여요.`
-        : "모든 글과 노래 추억이 최신순으로 보여요. 노래를 누르면 들을 수 있어요.";
+        ? `${rank} 때 쓴 글만 보여요.`
+        : "자유롭게 쓴 글이 최신순으로 보여요. 누르면 댓글을 볼 수 있어요.";
   const onError = (err: Error) => toast(err.message);
 
   return (
@@ -154,7 +176,7 @@ function StoryFeed({
             <PostComposer
               id="community-composer"
               label="자유글"
-              hint={`${cohortLabel(author.cohortMonth)} · ${myRank ?? "예비역"}으로 표시돼요`}
+              hint={`${authorLine({ ...author, rank: myRank })}으로 표시돼요`}
               titleMaxLength={TITLE_MAX_LENGTH}
               titlePlaceholder="제목"
               placeholder="생활관 이야기, 요즘 듣는 노래, 하고 싶은 말…"
@@ -202,13 +224,22 @@ function StoryFeed({
             >
               <MessagesSquare className="size-6" strokeWidth={2} />
             </span>
-            <h2 className="text-base font-bold">아직 올라온 글이 없어요</h2>
+            <h2 className="text-base font-bold">
+              {music
+                ? "아직 노래에 남긴 댓글이 없어요"
+                : "아직 올라온 글이 없어요"}
+            </h2>
             <p className="text-[13.5px] leading-relaxed text-muted-foreground">
-              그 시절 이야기를 처음으로 남겨보세요.
+              {music
+                ? "입대곡이나 타임라인에서 노래를 틀고 댓글을 남겨보세요."
+                : "첫 번째 이야기를 남겨보세요."}
             </p>
           </section>
         ) : (
-          <ul className="flex flex-col gap-2" aria-label="커뮤니티 글">
+          <ul
+            className="flex flex-col gap-2"
+            aria-label={music ? "노래 댓글" : "커뮤니티 글"}
+          >
             {feed.posts.map((m) =>
               m.kind === "post" ? (
                 // 커뮤니티 글 open into their page with 댓글
@@ -250,7 +281,9 @@ function StoryFeed({
         <DrawerContent className="mx-auto max-w-[430px] px-4 pb-8">
           <DrawerTitle className="pt-4 text-base">계급 선택</DrawerTitle>
           <DrawerDescription className="pb-3 text-xs">
-            그 계급 때 쓴 글과 그 시절 노래 추억만 보여요.
+            {music
+              ? "그 계급 시절 노래에 남긴 댓글만 보여요."
+              : "그 계급 때 쓴 글만 보여요."}
           </DrawerDescription>
           <ul className="flex flex-col gap-1.5">
             {RANK_FILTERS.map((r) => (
@@ -270,7 +303,7 @@ function StoryFeed({
       </Drawer>
 
       <ConfirmDelete
-        what="글"
+        what={music ? "댓글" : "글"}
         open={!!deleting}
         onCancel={() => setDeleting(null)}
         onConfirm={() => {
@@ -278,7 +311,7 @@ function StoryFeed({
           setDeleting(null);
           if (id)
             feed.remove.mutate(id, {
-              onSuccess: () => toast("글을 지웠어요"),
+              onSuccess: () => toast("지웠어요"),
               onError,
             });
         }}
@@ -287,11 +320,12 @@ function StoryFeed({
   );
 }
 
-const WHO = [
-  { key: "all", label: "전체", reserve: undefined },
-  { key: "reserve", label: "예비역 글", reserve: true },
-  { key: "serving", label: "현역 글", reserve: false },
-] as const;
+const WHO: { key: TalkWho | "all"; label: string }[] = [
+  { key: "all", label: "전체" },
+  { key: "reserve", label: "예비역 글" },
+  { key: "serving", label: "현역 글" },
+  { key: "pre", label: "입대 예정 글" },
+];
 
 /** 선후임 소통: 현역 and 예비역 talk to each other. */
 function TalkSpace({
@@ -303,12 +337,16 @@ function TalkSpace({
   status: Status;
   search: string;
 }) {
-  const [who, setWho] = useState<(typeof WHO)[number]>(WHO[0]);
-  const talks = useTalks({ reserve: who.reserve });
+  const [who, setWho] = useState<TalkWho | "all">("all");
+  const talks = useTalks({ who: who === "all" ? undefined : who });
   const [writing, setWriting] = useState(false);
-  const reserve = status.status === "done";
-  const canWrite = status.status !== "notYet";
-  const author = authorOf(plan, status);
+  const mine: TalkWho =
+    status.status === "done"
+      ? "reserve"
+      : status.status === "serving"
+        ? "serving"
+        : "pre";
+  const author = writerOf(plan);
   const onError = (err: Error) => toast(err.message);
   const openComposer = () => {
     setWriting(true);
@@ -318,11 +356,11 @@ function TalkSpace({
   return (
     <>
       <p className="px-4 pb-2 pt-3 text-xs leading-normal text-ink-icon">
-        {reserve
+        {mine === "reserve"
           ? "복무 중인 후임들에게 한마디 남기고, 그들의 이야기에 답해주세요."
-          : canWrite
+          : mine === "serving"
             ? "먼저 전역한 예비역 선배들에게 묻고 싶은 걸 남겨보세요."
-            : "현역과 예비역이 서로 이야기 나누는 공간이에요. 입대하면 글을 쓸 수 있어요."}
+            : "입대를 앞두고 궁금한 걸 먼저 다녀온 선배들에게 물어보세요."}
       </p>
 
       <div
@@ -331,25 +369,25 @@ function TalkSpace({
         aria-label="글쓴이 필터"
       >
         {WHO.map((w) => (
-          <Chip key={w.key} on={who.key === w.key} onClick={() => setWho(w)}>
+          <Chip key={w.key} on={who === w.key} onClick={() => setWho(w.key)}>
             {w.label}
           </Chip>
         ))}
       </div>
 
       <main className="flex flex-1 flex-col gap-2 px-4 pb-24">
-        {writing && canWrite && (
+        {writing && (
           <section className="rounded-2xl border-2 border-primary bg-card px-3 pb-3 pt-3">
             <PostComposer
               id="talk-composer"
-              label={reserve ? "현역 후임들에게" : "예비역 선배들에게"}
-              hint={`${cohortLabel(author.cohortMonth)} · ${plan.branch} · ${
-                status.status === "serving" ? status.current.rank : "예비역"
-              }으로 표시돼요`}
+              label={mine === "reserve" ? "현역 후임들에게" : "선배들에게"}
+              hint={`${authorLine({ ...author, rank: rankNow(status) })}으로 표시돼요`}
               placeholder={
-                reserve
+                mine === "reserve"
                   ? "그때 이랬으면 좋았겠다 싶은 것, 응원 한마디…"
-                  : "휴가, 보직, 전역 준비… 선배들에게 묻고 싶은 것"
+                  : mine === "serving"
+                    ? "휴가, 보직, 전역 준비… 선배들에게 묻고 싶은 것"
+                    : "훈련소 준비물, 첫 휴가… 입대 전에 궁금한 것"
               }
               titleMaxLength={TITLE_MAX_LENGTH}
               titlePlaceholder="제목"
@@ -363,16 +401,14 @@ function TalkSpace({
                   {
                     title,
                     body,
-                    rank:
-                      status.status === "serving" ? status.current.rank : null,
+                    rank: rankNow(status),
                     author,
                   },
                   {
                     onSuccess: () => {
                       done();
                       setWriting(false);
-                      if (who.reserve !== undefined && who.reserve !== reserve)
-                        setWho(WHO[0]);
+                      if (who !== "all" && who !== mine) setWho("all");
                       toast("글을 올렸어요");
                     },
                     onError,
@@ -407,9 +443,7 @@ function TalkSpace({
             </span>
             <h2 className="text-base font-bold">아직 올라온 글이 없어요</h2>
             <p className="text-[13.5px] leading-relaxed text-muted-foreground">
-              {canWrite
-                ? "첫 번째 이야기를 남겨보세요."
-                : "선후임이 글을 남기면 여기에 보여요."}
+              첫 번째 이야기를 남겨보세요.
             </p>
           </section>
         ) : (
@@ -435,7 +469,7 @@ function TalkSpace({
         )}
       </main>
 
-      {!writing && canWrite && (
+      {!writing && (
         <WriteButton onClick={openComposer} controls="talk-composer" />
       )}
     </>

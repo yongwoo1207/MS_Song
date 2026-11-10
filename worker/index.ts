@@ -5,14 +5,13 @@
  *   GET    /api/posts?song=<key>[&limit=20][&before=<cursor>]
  *                                    memories under a song, newest first,
  *                                    a page at a time ({ posts, next })
- *   GET    /api/posts?from=YYYY-MM&to=YYYY-MM[&cohort=YYYY-MM]
- *                                    song memories filed under those
- *                                    timeline months, by month, most liked
- *   GET    /api/posts?feed=community[&rank=][&reserve=1][&before=<cursor>]
- *                                    커뮤니티 글 and song memories, newest first
- *   GET    /api/posts?kind=talk[&reserve=0|1][&before=<cursor>]
+ *   GET    /api/posts?feed=story|music[&rank=][&reserve=1][&before=<cursor>]
+ *                                    커뮤니티 이야기 (글) or 음악 (memories
+ *                                    under songs), newest first
+ *   GET    /api/posts?kind=talk[&reserve=0|1|pre][&before=<cursor>]
  *                                    선후임 소통 글, newest first
- *   GET    /api/posts/:id            a 커뮤니티 글 or 소통 글 with its replies
+ *   GET    /api/posts/:id            a 커뮤니티 글 or 소통 글 with its 댓글
+ *                                    and 대댓글
  *   POST   /api/posts                write a song memory (NewSongRecord),
  *                                    a 커뮤니티 글 (NewCommunityPost),
  *                                    a 소통 글 (NewTalk) or a reply (NewReply)
@@ -61,7 +60,6 @@ const LIMITS = [
 const MAX_BODY_BYTES = 8_192;
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
-const TIMELINE_LIMIT = 1000;
 const PAGE = 20; // posts per page in paged lists
 
 const RecordBase = z.object({
@@ -74,6 +72,7 @@ const RecordBase = z.object({
   cohortMonth: z.string().regex(MONTH),
   branch: z.enum(POST_BRANCHES),
   isReserve: z.boolean(),
+  daysToEnlist: z.number().int().min(0).max(1000).nullable().default(null),
 });
 const NewSongRecord = RecordBase.extend({
   song: z.object({
@@ -92,6 +91,8 @@ const Author = {
   cohortMonth: z.string().regex(MONTH),
   branch: z.enum(POST_BRANCHES),
   isReserve: z.boolean(),
+  // 입대 예정자 only; older clients leave it out
+  daysToEnlist: z.number().int().min(0).max(1000).nullable().default(null),
 };
 /** Title of a 커뮤니티 글 or 소통 글. */
 const Title = z
@@ -116,6 +117,7 @@ const NewTalk = z.object({
 const NewReply = z.object({
   kind: z.literal("reply"),
   parentId: z.string().min(1).max(64),
+  replyTo: z.string().min(1).max(64).nullable().default(null),
   body: text(REPLY_MAX_LENGTH),
   ...Author,
 });
@@ -196,6 +198,8 @@ interface PostRow {
   cohort_month: string;
   branch: ApiPost["branch"];
   is_reserve: number;
+  days_to_enlist: number | null;
+  reply_to: string | null;
   like_count: number;
   reply_count: number;
   created_at: string;
@@ -218,17 +222,22 @@ const toApi = (r: PostRow, me: string | null, asker?: string): ApiPost => ({
   cohortMonth: r.cohort_month,
   branch: r.branch,
   isReserve: !!r.is_reserve,
+  daysToEnlist: r.days_to_enlist,
   likes: r.like_count,
   replies: r.reply_count,
   createdAt: r.created_at,
   likedByMe: !!r.liked_by_me,
   mine: !!me && r.author_id === me,
   parentId: r.parent_id,
+  replyTo: r.reply_to,
   ...(asker ? { byAsker: r.author_id === asker } : {}),
   hidden: r.status === "hidden",
 });
 
-const parse = <T>(schema: z.ZodType<T>, raw: unknown): T => {
+const parse = <S extends z.ZodTypeAny>(
+  schema: S,
+  raw: unknown,
+): z.output<S> => {
   const parsed = schema.safeParse(raw);
   if (!parsed.success) {
     throw new HttpError(
@@ -295,35 +304,53 @@ const listSongRecords = (req: Request, env: Env, url: URL, song: string) =>
   );
 
 /**
- * The 커뮤니티 feed: 커뮤니티 글 and memories under songs together. `rank`
- * only that rank's (the chart's, for a song), `reserve=1` only by 예비역.
+ * A 커뮤니티 board: `feed=story` 커뮤니티 글, `feed=music` memories under
+ * songs (both for any other value, as older clients ask). `rank` only that
+ * rank's (the chart's, for a song), `reserve=1` only by 예비역.
  */
 function listCommunityFeed(req: Request, env: Env, url: URL) {
+  const feed = url.searchParams.get("feed");
+  const kinds =
+    feed === "story"
+      ? "('post')"
+      : feed === "music"
+        ? "('record')"
+        : "('record', 'post')";
   const rank = z.enum(POST_RANKS).safeParse(url.searchParams.get("rank"));
   const reserve = url.searchParams.get("reserve") === "1" ? 1 : null;
   return pagedPosts(
     req,
     env,
     url,
-    `p.kind IN ('record', 'post') AND p.status = 'visible'
+    `p.kind IN ${kinds} AND p.status = 'visible'
      AND (?5 IS NULL OR p.rank = ?5) AND (?6 IS NULL OR p.is_reserve = ?6)`,
     [rank.success ? rank.data : null, reserve],
   );
 }
 
-/** 선후임 소통 글; `reserve=1` only by 예비역, `reserve=0` only by 현역. */
+/**
+ * 선후임 소통 글; `reserve=1` only by 예비역, `reserve=0` only by 현역,
+ * `reserve=pre` only by 입대 예정자.
+ */
 function listTalks(req: Request, env: Env, url: URL) {
   const r = url.searchParams.get("reserve");
+  const who =
+    r === "1"
+      ? "AND p.is_reserve = 1"
+      : r === "0"
+        ? "AND p.is_reserve = 0 AND p.days_to_enlist IS NULL"
+        : r === "pre"
+          ? "AND p.days_to_enlist IS NOT NULL"
+          : "";
   return pagedPosts(
     req,
     env,
     url,
-    "p.kind = 'talk' AND p.status = 'visible' AND (?5 IS NULL OR p.is_reserve = ?5)",
-    [r === "1" ? 1 : r === "0" ? 0 : null],
+    `p.kind = 'talk' AND p.status = 'visible' ${who}`,
   );
 }
 
-/** A 소통 글 and its replies, oldest reply first. */
+/** A 커뮤니티 글 or 소통 글 and its 댓글 and 대댓글, oldest first. */
 async function getThread(req: Request, env: Env, id: string) {
   const me = await authorOf(req);
   const talk = await env.DB.prepare(
@@ -381,31 +408,6 @@ async function listEvents(env: Env, url: URL) {
     .bind(from, to)
     .all<EventRow>();
   return json({ events: results.map(toApiEvent) });
-}
-
-/** Song memories filed under timeline months, by month, most liked. */
-async function listMonthRecords(req: Request, env: Env, url: URL) {
-  const from = url.searchParams.get("from") ?? "";
-  const to = url.searchParams.get("to") ?? "";
-  const cohort = url.searchParams.get("cohort");
-  if (!MONTH.test(from) || !MONTH.test(to) || from > to) {
-    throw new HttpError(400, "from, to 값이 필요해요 (YYYY-MM)");
-  }
-  if (cohort !== null && !MONTH.test(cohort)) {
-    throw new HttpError(400, "cohort 값이 잘못됐어요");
-  }
-  const me = await authorOf(req);
-  const { results } = await env.DB.prepare(
-    `${SELECT_POST}
-     WHERE p.kind = 'record' AND p.status = 'visible'
-       AND p.about_month BETWEEN ?2 AND ?3
-       AND (?4 IS NULL OR p.cohort_month = ?4)
-     ORDER BY p.about_month, p.like_count DESC, p.created_at DESC
-     LIMIT ?5`,
-  )
-    .bind(me ?? "", from, to, cohort, TIMELINE_LIMIT)
-    .all<PostRow>();
-  return json({ posts: results.map((r) => toApi(r, me)) });
 }
 
 /** Memories and hearts per song, for the chart lists. */
@@ -589,10 +591,11 @@ async function notifyLike(
 }
 
 /**
- * Tell whoever wrote a 소통 글 about a reply (never about their own). More
- * replies from the same person bring the notification back as unread.
+ * Tell whoever wrote a post about a 댓글 under it, or a 댓글 about a 대댓글
+ * (never about their own). More from the same person bring the notification
+ * back as unread.
  */
-async function notifyReply(db: D1Database, talkId: string, actor: string) {
+async function notifyReply(db: D1Database, postId: string, actor: string) {
   try {
     await db
       .prepare(
@@ -603,7 +606,7 @@ async function notifyReply(db: D1Database, talkId: string, actor: string) {
            SET read_at = NULL,
                created_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`,
       )
-      .bind(talkId, actor)
+      .bind(postId, actor)
       .run();
   } catch (err) {
     console.error("notifyReply failed", err);
@@ -647,8 +650,8 @@ async function createPlain(
   const id = crypto.randomUUID();
   await env.DB.prepare(
     `INSERT INTO posts (id, kind, title, body, rank, author_id, cohort_month,
-                        branch, is_reserve)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        branch, is_reserve, days_to_enlist)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
@@ -660,6 +663,7 @@ async function createPlain(
       input.cohortMonth,
       input.branch,
       input.isReserve ? 1 : 0,
+      input.isReserve ? null : input.daysToEnlist,
     )
     .run();
   const row = await env.DB.prepare(`${SELECT_POST} WHERE p.id = ?2`)
@@ -678,27 +682,44 @@ async function createReply(env: Env, req: Request, raw: unknown) {
     .bind(input.parentId)
     .first<{ author_id: string }>();
   if (!talk) throw new HttpError(404, "글을 찾을 수 없어요");
+  // 대댓글: answers a 댓글 of this thread. Kept one level deep, so an
+  // answer to a 대댓글 files under the 댓글 that one answers.
+  let target: { id: string; author_id: string; top: string } | null = null;
+  if (input.replyTo) {
+    target = await env.DB.prepare(
+      `SELECT id, author_id, COALESCE(reply_to, id) AS top FROM posts
+       WHERE id = ? AND kind = 'reply' AND parent_id = ? AND status = 'visible'`,
+    )
+      .bind(input.replyTo, input.parentId)
+      .first<{ id: string; author_id: string; top: string }>();
+    if (!target) throw new HttpError(404, "답글을 달 댓글이 없어요");
+  }
   await checkLimits(env.DB, me);
   const id = crypto.randomUUID();
   await env.DB.batch([
     env.DB.prepare(
-      `INSERT INTO posts (id, kind, body, parent_id, author_id, cohort_month,
-                          branch, is_reserve)
-       VALUES (?, 'reply', ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO posts (id, kind, body, parent_id, reply_to, author_id,
+                          cohort_month, branch, is_reserve, days_to_enlist)
+       VALUES (?, 'reply', ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       id,
       input.body,
       input.parentId,
+      target?.top ?? null,
       me,
       input.cohortMonth,
       input.branch,
       input.isReserve ? 1 : 0,
+      input.isReserve ? null : input.daysToEnlist,
     ),
     env.DB.prepare(
       "UPDATE posts SET reply_count = reply_count + 1 WHERE id = ?",
     ).bind(input.parentId),
   ]);
-  await notifyReply(env.DB, input.parentId, me);
+  if (target) await notifyReply(env.DB, target.id, me);
+  // The thread's author hears of it too, unless it answers their own 댓글
+  if (!target || target.author_id !== talk.author_id)
+    await notifyReply(env.DB, input.parentId, me);
   const row = await env.DB.prepare(`${SELECT_POST} WHERE p.id = ?2`)
     .bind(me, id)
     .first<PostRow>();
@@ -717,8 +738,8 @@ async function createRecord(req: Request, env: Env, raw: unknown) {
   await env.DB.prepare(
     `INSERT INTO posts (id, kind, body, song_key, song_title, song_artist,
                         rank, about_month, author_id, cohort_month,
-                        branch, is_reserve)
-     VALUES (?, 'record', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        branch, is_reserve, days_to_enlist)
+     VALUES (?, 'record', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
@@ -732,6 +753,7 @@ async function createRecord(req: Request, env: Env, raw: unknown) {
       input.cohortMonth,
       input.branch,
       input.isReserve ? 1 : 0,
+      input.isReserve ? null : input.daysToEnlist,
     )
     .run();
 
@@ -861,7 +883,7 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
       }
       const kind = url.searchParams.get("kind");
       if (kind === "talk") return listTalks(req, env, url);
-      return listMonthRecords(req, env, url);
+      throw new HttpError(400, "잘못된 요청이에요");
     }
     if (req.method === "POST") return createPost(req, env);
   } else if (!action && req.method === "GET") {

@@ -1,5 +1,5 @@
 /**
- * Notifications: likes on my posts and replies to my 소통 글, per post.
+ * Notifications: likes on my posts, 댓글 on my 글 and 답글 on my 댓글, per post.
  * Served by the Worker's /api/notifications.
  */
 import type { ApiNotification } from "@shared/posts";
@@ -39,7 +39,7 @@ function target(post: Notification["post"]): string {
 export function notificationText(n: Notification): string {
   return n.type === "like"
     ? `${target(n.post)}에 공감 ${n.count}개가 달렸어요`
-    : `${target(n.post)}에 ${n.count}명이 댓글을 달았어요`;
+    : `${target(n.post)}에 ${n.count}명이 ${n.post.kind === "reply" ? "답글" : "댓글"}을 달았어요`;
 }
 
 /** Where tapping a notification goes. */

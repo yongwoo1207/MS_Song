@@ -1,34 +1,25 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Heart } from "lucide-react";
+import { CornerDownRight, Heart } from "lucide-react";
 import { toast } from "sonner";
 import ConfirmDelete from "@/components/ipdae/ConfirmDelete";
 import MobileShell from "@/components/ipdae/MobileShell";
 import PostComposer from "@/components/ipdae/PostComposer";
 import SubHeader from "@/components/ipdae/SubHeader";
-import { authorLine } from "@/components/ipdae/TalkItem";
 import { useServicePlan } from "@/hooks/useServicePlan";
 import { useThread } from "@/hooks/useTalks";
-import { ddayStatus } from "@/lib/dday";
-import {
-  type Memory,
-  type MemoryAuthor,
-  cohortLabel,
-  cohortMonthOf,
-  timeAgo,
-} from "@/lib/memories";
-import { REPLY_MAX_LENGTH } from "@/lib/talks";
+import { type Memory, authorLine, timeAgo, writerOf } from "@/lib/memories";
+import { REPLY_MAX_LENGTH, groupReplies } from "@/lib/talks";
 import { cn } from "@/lib/utils";
 
 /**
- * One 커뮤니티 글 or 선후임 소통 글 with its 댓글. Anyone serving or
- * discharged can comment; before 입대 it is read only.
+ * One 커뮤니티 글 or 선후임 소통 글 with its 댓글, and 대댓글 one level
+ * under each 댓글. Anyone with a service plan can comment, 입대 예정자 too.
  */
 export default function Talk() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { plan } = useServicePlan();
-  const status = useMemo(() => (plan ? ddayStatus(plan) : null), [plan]);
   const {
     post,
     replies,
@@ -41,17 +32,15 @@ export default function Talk() {
     like,
   } = useThread(id);
   const onError = (err: Error) => toast(err.message);
+  const groups = useMemo(() => groupReplies(replies), [replies]);
 
-  const reserve = status?.status === "done";
-  const canReply = !!post && !!status && status.status !== "notYet";
+  const author = useMemo(() => (plan ? writerOf(plan) : null), [plan]);
   const community = post?.kind === "post";
-  const author: MemoryAuthor | null = plan
-    ? {
-        cohortMonth: cohortMonthOf(plan.enlist),
-        branch: plan.branch,
-        isReserve: reserve,
-      }
-    : null;
+  // 대댓글 being written: under which 댓글, answering which one
+  const [answering, setAnswering] = useState<{
+    group: string;
+    to: Memory;
+  } | null>(null);
 
   // Asked in a dialog first (see ConfirmDelete)
   const [deleting, setDeleting] = useState<Memory | null>(null);
@@ -73,6 +62,14 @@ export default function Talk() {
       onError,
     });
   };
+
+  const who = !author
+    ? null
+    : author.isReserve
+      ? "reserve"
+      : author.daysToEnlist != null
+        ? "pre"
+        : "serving";
 
   return (
     <MobileShell>
@@ -123,7 +120,7 @@ export default function Talk() {
               댓글{" "}
               <span className="font-mono text-primary">{replies.length}</span>
             </h2>
-            {replies.length === 0 ? (
+            {groups.length === 0 ? (
               <p className="rounded-xl bg-muted px-4 py-5 text-center text-[13px] leading-relaxed text-muted-foreground">
                 {post.mine
                   ? "아직 댓글이 없어요. 댓글이 달리면 알림으로 알려드려요."
@@ -131,44 +128,81 @@ export default function Talk() {
               </p>
             ) : (
               <ul className="flex flex-col gap-2" aria-label="댓글">
-                {replies.map((r) => (
-                  <li
-                    key={r.id}
-                    className={cn(
-                      "flex flex-col gap-1.5 rounded-2xl border px-3.5 pb-2 pt-3",
-                      r.byAsker ? "bg-accent/50" : "bg-card",
+                {groups.map((g) => (
+                  <li key={g.id} className="flex flex-col gap-1.5">
+                    {g.top ? (
+                      <Comment
+                        memory={g.top}
+                        onLike={() => like.mutate(g.top!.id, { onError })}
+                        onDelete={() => onDelete(g.top!)}
+                        onAnswer={
+                          author
+                            ? () => setAnswering({ group: g.id, to: g.top! })
+                            : undefined
+                        }
+                      />
+                    ) : (
+                      <p className="rounded-2xl bg-muted px-3.5 py-2.5 text-[12.5px] text-muted-foreground">
+                        삭제된 댓글이에요
+                      </p>
                     )}
-                  >
-                    <div className="flex items-center gap-1.5 text-[11px] text-ink-icon">
-                      {r.byAsker && (
-                        <span className="shrink-0 rounded-md bg-primary px-1.5 py-[2px] font-bold text-primary-foreground">
-                          글쓴이
-                        </span>
-                      )}
-                      <span className="truncate">
-                        {cohortLabel(r.cohortMonth)} · {r.branch} ·{" "}
-                        {r.isReserve ? "예비역" : "현역"}
-                      </span>
-                      {r.mine && (
-                        <span className="shrink-0 font-bold">· 내 글</span>
-                      )}
-                      <span className="flex-1" />
-                      <span className="shrink-0">{timeAgo(r.createdAt)}</span>
-                    </div>
-                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                      {r.body}
-                    </p>
-                    <Actions
-                      post={r}
-                      onLike={() => like.mutate(r.id, { onError })}
-                      onDelete={() => onDelete(r)}
-                    />
+                    {g.answers.length > 0 && (
+                      <ul className="flex flex-col gap-1.5" aria-label="답글">
+                        {g.answers.map((a) => (
+                          <li key={a.id} className="flex gap-1.5 pl-2">
+                            <CornerDownRight
+                              className="mt-3 size-3.5 shrink-0 text-ink-icon"
+                              strokeWidth={2}
+                              aria-hidden="true"
+                            />
+                            <Comment
+                              memory={a}
+                              answer
+                              onLike={() => like.mutate(a.id, { onError })}
+                              onDelete={() => onDelete(a)}
+                              onAnswer={
+                                author
+                                  ? () => setAnswering({ group: g.id, to: a })
+                                  : undefined
+                              }
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {author && answering?.group === g.id && (
+                      <div className="ml-7 rounded-2xl border-2 border-primary bg-card px-3 pb-3 pt-3">
+                        <PostComposer
+                          id={`answer-${g.id}`}
+                          label="답글 달기"
+                          hint={`${authorLine(author)}으로 표시돼요`}
+                          placeholder="답글을 남겨주세요"
+                          maxLength={REPLY_MAX_LENGTH}
+                          submitLabel="답글 남기기"
+                          saving={reply.isPending}
+                          onCancel={() => setAnswering(null)}
+                          onSubmit={(body, done) =>
+                            reply.mutate(
+                              { body, author, replyTo: answering.to.id },
+                              {
+                                onSuccess: () => {
+                                  done();
+                                  setAnswering(null);
+                                  toast("답글을 남겼어요");
+                                },
+                                onError,
+                              },
+                            )
+                          }
+                        />
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
             )}
 
-            {canReply && author ? (
+            {author ? (
               <PostComposer
                 id="reply-composer"
                 label="댓글 달기"
@@ -177,23 +211,27 @@ export default function Talk() {
                     ? undefined
                     : post.mine
                       ? "답해준 분들에게 고마움이나 근황을 남겨보세요."
-                      : reserve
+                      : who === "reserve"
                         ? "그 시절의 나에게 해주고 싶던 말을 남겨주세요."
-                        : "같은 시기를 지나는 사람으로서 한마디 남겨주세요."
+                        : who === "pre"
+                          ? "입대를 앞둔 사람으로서 궁금한 걸 묻거나 한마디 남겨주세요."
+                          : "같은 시기를 지나는 사람으로서 한마디 남겨주세요."
                 }
-                hint={`${cohortLabel(author.cohortMonth)} · ${author.branch} · ${reserve ? "예비역" : "현역"}으로 표시돼요`}
+                hint={`${authorLine(author)}으로 표시돼요`}
                 placeholder={
                   community
                     ? "댓글을 남겨주세요"
                     : post.mine
                       ? "답 고마워요. 덕분에…"
-                      : reserve
+                      : who === "reserve"
                         ? "저도 그랬어요. 지나고 보니…"
-                        : "저도 요즘 그래요…"
+                        : who === "pre"
+                          ? "저도 곧 입대해요…"
+                          : "저도 요즘 그래요…"
                 }
                 maxLength={REPLY_MAX_LENGTH}
                 submitLabel="댓글 남기기"
-                saving={reply.isPending}
+                saving={reply.isPending && !answering}
                 autoFocus={false}
                 onSubmit={(body, done) =>
                   reply.mutate(
@@ -210,14 +248,16 @@ export default function Talk() {
               />
             ) : (
               <p className="px-1 text-center text-xs text-ink-icon">
-                입대하면 댓글을 남길 수 있어요.
+                입대일을 넣으면 댓글을 남길 수 있어요.
               </p>
             )}
           </>
         )}
       </main>
       <ConfirmDelete
-        what={deleting?.kind === "reply" ? "댓글" : "글"}
+        what={
+          deleting?.kind !== "reply" ? "글" : deleting.replyTo ? "답글" : "댓글"
+        }
         open={!!deleting}
         onCancel={() => setDeleting(null)}
         onConfirm={confirmDelete}
@@ -226,17 +266,65 @@ export default function Talk() {
   );
 }
 
+/** A 댓글, or with `answer` a 대댓글 under one. */
+function Comment({
+  memory: r,
+  answer,
+  onLike,
+  onDelete,
+  onAnswer,
+}: {
+  memory: Memory;
+  answer?: boolean;
+  onLike: () => void;
+  onDelete: () => void;
+  onAnswer?: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 flex-1 flex-col gap-1.5 rounded-2xl border px-3.5 pb-2 pt-3",
+        r.byAsker ? "bg-accent/50" : answer ? "bg-muted/40" : "bg-card",
+      )}
+    >
+      <div className="flex items-center gap-1.5 text-[11px] text-ink-icon">
+        {r.byAsker && (
+          <span className="shrink-0 rounded-md bg-primary px-1.5 py-[2px] font-bold text-primary-foreground">
+            글쓴이
+          </span>
+        )}
+        <span className="truncate">{authorLine(r)}</span>
+        {r.mine && <span className="shrink-0 font-bold">· 내 글</span>}
+        <span className="flex-1" />
+        <span className="shrink-0">{timeAgo(r.createdAt)}</span>
+      </div>
+      <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+        {r.body}
+      </p>
+      <Actions
+        post={r}
+        onLike={onLike}
+        onDelete={onDelete}
+        onAnswer={onAnswer}
+      />
+    </div>
+  );
+}
+
 function Actions({
   post: m,
   onLike,
   onDelete,
+  onAnswer,
 }: {
   post: Memory;
   onLike: () => void;
   onDelete: () => void;
+  /** Open the 답글 box (댓글 only) */
+  onAnswer?: () => void;
 }) {
   return (
-    <div className="flex items-center border-t border-muted pt-1">
+    <div className="flex items-center gap-1 border-t border-muted pt-1">
       <button
         type="button"
         onClick={onLike}
@@ -254,6 +342,15 @@ function Actions({
         />
         {m.likes}
       </button>
+      {onAnswer && (
+        <button
+          type="button"
+          onClick={onAnswer}
+          className="h-8 rounded-lg px-1.5 text-xs font-bold text-muted-foreground"
+        >
+          답글
+        </button>
+      )}
       <span className="flex-1" />
       {m.mine && (
         <button

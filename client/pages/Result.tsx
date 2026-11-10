@@ -13,8 +13,8 @@ import EditDatesDrawer from "@/components/ipdae/EditDatesDrawer";
 import { useServicePlan } from "@/hooks/useServicePlan";
 import { useSaveEnlistment } from "@/hooks/useSavedEnlistment";
 import { usePlayer } from "@/hooks/usePlayer";
-import { cohortMonthOf } from "@/lib/memories";
-import { ddayStatus, isLockedRank } from "@/lib/dday";
+import { writerOf } from "@/lib/memories";
+import { isLockedRank } from "@/lib/dday";
 import { RANKS, type Rank, rankOn } from "@/lib/service";
 
 /** 입대곡 tab: per-rank charts; ranks not reached yet stay locked. */
@@ -39,14 +39,7 @@ export default function Result() {
   return (
     <MobileShell>
       <AppHeader plan={plan} title="내 입대곡" />
-      <NowPlaying
-        player={player}
-        author={{
-          cohortMonth: cohortMonthOf(plan.enlist),
-          branch: plan.branch,
-          isReserve: ddayStatus(plan).status === "done",
-        }}
-      />
+      <NowPlaying player={player} author={writerOf(plan)} />
 
       <ServiceSummary plan={plan} onEditDates={() => setEditing(true)} />
 

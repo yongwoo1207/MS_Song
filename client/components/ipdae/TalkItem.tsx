@@ -1,13 +1,7 @@
 import { Link } from "react-router-dom";
 import { ChevronRight, MessageCircle } from "lucide-react";
-import { type Memory, cohortLabel, timeAgo } from "@/lib/memories";
+import { type Memory, authorLine, timeAgo } from "@/lib/memories";
 import { cn } from "@/lib/utils";
-
-/** "2023년 5월 군번 · 육군 · 일병", "… · 예비역" */
-export function authorLine(m: Memory) {
-  const role = m.isReserve ? "예비역" : (m.rank ?? "현역");
-  return `${cohortLabel(m.cohortMonth)} · ${m.branch} · ${role}`;
-}
 
 /** A 커뮤니티 글 or 소통 글 in a list: who, title, the start of it, 댓글 count. */
 export default function TalkItem({

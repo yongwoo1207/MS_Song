@@ -4,7 +4,7 @@
  *   record = 노래 추억, a memory under a song
  *   post   = 커뮤니티 글, on no song
  *   talk   = 선후임 소통 글 between 현역 and 예비역
- *   reply  = 댓글 under a post or talk
+ *   reply  = 댓글 under a post or talk, or a 대댓글 under a 댓글
  */
 
 export const POST_RANKS = ["이병", "일병", "상병", "병장"] as const;
@@ -42,6 +42,8 @@ interface AuthorFields {
   cohortMonth: string; // 'YYYY-MM'
   branch: PostBranch;
   isReserve: boolean;
+  /** 입대 예정자: days left to 입대 now. null once enlisted. */
+  daysToEnlist?: number | null;
 }
 
 /** Body of POST /api/posts for a memory under a song. */
@@ -72,10 +74,12 @@ export interface NewTalk extends AuthorFields {
   rank: PostRank | null; // the writer's rank now (null for 예비역)
 }
 
-/** Body of POST /api/posts for a reply under a 소통 글. */
+/** Body of POST /api/posts for a 댓글 under a post or talk. */
 export interface NewReply extends AuthorFields {
   kind: "reply";
-  parentId: string;
+  parentId: string; // the thread
+  /** 대댓글: the 댓글 it answers */
+  replyTo?: string | null;
   body: string;
 }
 
@@ -92,13 +96,17 @@ export interface ApiPost {
   cohortMonth: string;
   branch: PostBranch;
   isReserve: boolean;
+  /** Written by a 입대 예정자 this many days before 입대 */
+  daysToEnlist: number | null;
   likes: number;
   replies: number;
   createdAt: string; // ISO
   likedByMe: boolean;
   mine: boolean;
-  /** Reply: the talk it answers. */
+  /** Reply: the thread it is under. */
   parentId?: string | null;
+  /** 대댓글: the top-level 댓글 it answers. */
+  replyTo?: string | null;
   /** Reply written by whoever wrote the talk. */
   byAsker?: boolean;
   /** Hidden after reports. Only ever true in my own list. */

@@ -9,6 +9,7 @@ import {
   MEMORY_MAX_LENGTH,
   type MemoryAuthor,
   cohortLabel,
+  preEnlistLabel,
 } from "@/lib/memories";
 import MemoryItem from "./MemoryItem";
 
@@ -209,8 +210,9 @@ export default function MemoriesPanel({
             <span className="text-destructive">{error}</span>
           ) : (
             <span className="text-ink-icon">
-              {cohortLabel(author.cohortMonth)} · {rank} 시절
-              {author.isReserve ? " · 예비역으로" : "로"} 표시돼요
+              {author.daysToEnlist != null
+                ? `${preEnlistLabel(author.daysToEnlist)}으로 표시돼요`
+                : `${cohortLabel(author.cohortMonth)} · ${rank} 시절${author.isReserve ? " · 예비역으로" : "로"} 표시돼요`}
             </span>
           )}
           <span className="shrink-0 font-mono text-ink-icon">

@@ -1,7 +1,7 @@
 /**
  * Memories (records): short posts about what a song meant to someone in
- * service. The timeline shows them under the chart month they came from. Stored in Cloudflare D1 behind the Worker's
- * /api/posts (worker/index.ts); the UI only talks to `memoryStore`.
+ * service, gathered in 커뮤니티 > 음악. Stored in Cloudflare D1 behind the
+ * Worker's /api/posts (worker/index.ts); the UI only talks to `memoryStore`.
  */
 import { format } from "date-fns";
 import {
@@ -13,7 +13,9 @@ import {
   RECORD_MAX_LENGTH,
   type SongRef,
 } from "@shared/posts";
+import { ddayStatus } from "./dday";
 import { deviceToken } from "./device";
+import type { ServicePlan } from "./service";
 
 export type Memory = ApiPost;
 
@@ -22,6 +24,8 @@ export interface MemoryAuthor {
   cohortMonth: string; // 'YYYY-MM'
   branch: PostBranch;
   isReserve: boolean;
+  /** 입대 예정자: days left to 입대. null once enlisted. */
+  daysToEnlist: number | null;
 }
 
 export interface NewMemory {
@@ -30,12 +34,6 @@ export interface NewMemory {
   rank: PostRank;
   aboutMonth: string; // 'YYYY-MM'
   author: MemoryAuthor;
-}
-
-export interface MonthRange {
-  from: string; // 'YYYY-MM'
-  to: string;
-  cohort?: string; // only this 군번
 }
 
 /** One page of a song's memories; `next` fetches the following one. */
@@ -57,13 +55,19 @@ export interface NewPost {
 /** 커뮤니티 filter: one rank's posts, or only 예비역's. */
 export type FeedFilter = PostRank | "예비역" | null;
 
+/** 커뮤니티 board: 이야기 (커뮤니티 글) or 음악 (memories under songs). */
+export type FeedTopic = "story" | "music";
+
 export interface MemoryStore {
   list(songKey: string, before?: string): Promise<MemoryPage>;
-  /** 커뮤니티 글 and song memories, newest first. */
-  feed(filter: FeedFilter, before?: string): Promise<MemoryPage>;
+  /** One 커뮤니티 board, newest first. */
+  feed(
+    topic: FeedTopic,
+    filter: FeedFilter,
+    before?: string,
+  ): Promise<MemoryPage>;
   /** A 커뮤니티 글, on no song. */
   addPost(input: NewPost): Promise<Memory>;
-  listMonths(range: MonthRange): Promise<Memory[]>;
   add(input: NewMemory): Promise<Memory>;
   remove(id: string): Promise<void>;
   toggleLike(id: string): Promise<{ liked: boolean; likes: number }>;
@@ -111,9 +115,9 @@ export const apiMemoryStore: MemoryStore = {
     const data = await call<{ posts: Memory[]; next?: string | null }>(`?${q}`);
     return { posts: data.posts, next: data.next ?? null };
   },
-  async feed(filter, before) {
+  async feed(topic, filter, before) {
     const q = new URLSearchParams({
-      feed: "community",
+      feed: topic,
       limit: `${MEMORY_PAGE}`,
     });
     if (filter === "예비역") q.set("reserve", "1");
@@ -128,12 +132,6 @@ export const apiMemoryStore: MemoryStore = {
       body: JSON.stringify({ kind: "post", title, body, rank, ...author }),
     });
     return data.post;
-  },
-  async listMonths({ from, to, cohort }) {
-    const q = new URLSearchParams({ from, to });
-    if (cohort) q.set("cohort", cohort);
-    const data = await call<{ posts: Memory[] }>(`?${q}`);
-    return data.posts;
   },
   async add({ song, body, rank, aboutMonth, author }) {
     const data = await call<{ post: Memory }>("", {
@@ -193,6 +191,37 @@ export function cohortLabel(cohortMonth: string) {
   return `${y}년 ${Number(m)}월 군번`;
 }
 
+/** Who is writing now, from the service plan. */
+export function writerOf(plan: ServicePlan, now = new Date()): MemoryAuthor {
+  const status = ddayStatus(plan, now);
+  return {
+    cohortMonth: cohortMonthOf(plan.enlist),
+    branch: plan.branch,
+    isReserve: status.status === "done",
+    daysToEnlist: status.status === "notYet" ? status.daysLeft : null,
+  };
+}
+
+/** 23 → "입대 23일 전" */
+export const preEnlistLabel = (days: number) =>
+  days > 0 ? `입대 ${days}일 전` : "입대 당일";
+
+/**
+ * Who wrote a post, as shown on it: "2023년 5월 군번 · 육군 · 일병",
+ * "… · 예비역", or "입대 23일 전 · 육군" for a 입대 예정자.
+ */
+export function authorLine(
+  m: Pick<Memory, "cohortMonth" | "branch" | "isReserve"> & {
+    daysToEnlist?: number | null;
+    rank?: PostRank | null;
+  },
+) {
+  if (m.daysToEnlist != null)
+    return `${preEnlistLabel(m.daysToEnlist)} · ${m.branch}`;
+  const role = m.isReserve ? "예비역" : (m.rank ?? "현역");
+  return `${cohortLabel(m.cohortMonth)} · ${m.branch} · ${role}`;
+}
+
 /** '2021-03' → "2021년 3월" */
 export function monthLabel(month: string) {
   const [y, m] = month.split("-");
@@ -201,13 +230,13 @@ export function monthLabel(month: string) {
 
 /** Where a post lives, e.g. "♪ LOVE DIVE · IVE", "커뮤니티 · 휴가 계획". */
 export function postContext(
-  p: Pick<Memory, "kind" | "song" | "title">,
+  p: Pick<Memory, "kind" | "song" | "title" | "replyTo">,
 ): string {
   if (p.song) return `♪ ${p.song.title} · ${p.song.artist}`;
   if (p.kind === "post")
     return p.title ? `커뮤니티 · ${p.title}` : "커뮤니티 글";
   if (p.kind === "talk") return "선후임 소통 글";
-  if (p.kind === "reply") return "댓글";
+  if (p.kind === "reply") return p.replyTo ? "답글" : "댓글";
   return "";
 }
 

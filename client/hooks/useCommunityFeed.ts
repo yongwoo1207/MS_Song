@@ -4,17 +4,22 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { invalidatePosts } from "./postsCache";
-import { type FeedFilter, type NewPost, memoryStore } from "@/lib/memories";
+import {
+  type FeedFilter,
+  type FeedTopic,
+  type NewPost,
+  memoryStore,
+} from "@/lib/memories";
 
 /**
- * 커뮤니티: 커뮤니티 글 and song memories, newest first, 20 at a time,
- * plus write / delete / like.
+ * A 커뮤니티 board (이야기 or 음악), newest first, 20 at a time, plus
+ * write / delete / like.
  */
-export function useCommunityFeed(filter: FeedFilter) {
+export function useCommunityFeed(topic: FeedTopic, filter: FeedFilter) {
   const qc = useQueryClient();
   const list = useInfiniteQuery({
-    queryKey: ["song-feed", filter],
-    queryFn: ({ pageParam }) => memoryStore.feed(filter, pageParam),
+    queryKey: ["song-feed", topic, filter],
+    queryFn: ({ pageParam }) => memoryStore.feed(topic, filter, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next ?? undefined,
     staleTime: 30_000,

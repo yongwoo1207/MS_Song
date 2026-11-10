@@ -1,5 +1,10 @@
 import { Heart, Music, Play } from "lucide-react";
-import { type Memory, cohortLabel, timeAgo } from "@/lib/memories";
+import {
+  type Memory,
+  cohortLabel,
+  preEnlistLabel,
+  timeAgo,
+} from "@/lib/memories";
 import { cn } from "@/lib/utils";
 
 /**
@@ -58,9 +63,11 @@ export default function MemoryItem({
       )}
       <div className="flex items-center gap-1.5">
         <span className="whitespace-nowrap rounded-md bg-accent px-1.5 py-[3px] text-[11px] font-bold text-primary">
-          {m.title
-            ? `${cohortLabel(m.cohortMonth)} · ${m.isReserve ? "예비역" : (m.rank ?? "현역")}`
-            : `${cohortLabel(m.cohortMonth)} · ${m.rank} 시절${m.isReserve ? " · 예비역" : ""}`}
+          {m.daysToEnlist != null
+            ? preEnlistLabel(m.daysToEnlist)
+            : m.title
+              ? `${cohortLabel(m.cohortMonth)} · ${m.isReserve ? "예비역" : (m.rank ?? "현역")}`
+              : `${cohortLabel(m.cohortMonth)} · ${m.rank} 시절${m.isReserve ? " · 예비역" : ""}`}
         </span>
         {m.mine && (
           <span className="text-[11px] font-bold text-ink-icon">내 글</span>

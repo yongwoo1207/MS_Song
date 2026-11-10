@@ -3,7 +3,6 @@ import type { QueryClient } from "@tanstack/react-query";
 /** Every cached list a post can show up in. */
 const POST_QUERIES = [
   "memories",
-  "timeline",
   "song-counts",
   "my-posts",
   "song-feed",
