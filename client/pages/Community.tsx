@@ -160,7 +160,6 @@ function Board({
                       setWriting(false);
                       // Show it: 음악 lists only 노래 댓글
                       if (topic.key !== "all") goTopic(TOPICS[0]);
-                      toast("글을 올렸어요");
                     },
                     onError,
                   },
@@ -249,11 +248,7 @@ function Board({
         onConfirm={() => {
           const m = deleting;
           setDeleting(null);
-          if (m)
-            feed.remove.mutate(m.id, {
-              onSuccess: () => toast("지웠어요"),
-              onError,
-            });
+          if (m) feed.remove.mutate(m.id, { onError });
         }}
       />
     </>

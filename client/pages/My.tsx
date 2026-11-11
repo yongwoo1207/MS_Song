@@ -42,7 +42,6 @@ export default function My() {
     setDeleting(null);
     if (!m) return;
     remove.mutate(m.id, {
-      onSuccess: () => toast("지웠어요"),
       onError: (err) => toast(err.message),
     });
   };

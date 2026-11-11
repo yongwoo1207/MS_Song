@@ -913,6 +913,15 @@ async function deletePost(req: Request, env: Env, id: string) {
     .bind(id, me)
     .first<{ kind: ApiPost["kind"]; parent_id: string | null }>();
   if (!gone) throw new HttpError(404, "지울 수 있는 글이 아니에요");
+  if (gone.kind === "post" || gone.kind === "talk") {
+    // Its 댓글 and 대댓글 go with it (a 댓글 alone keeps its 대댓글)
+    await env.DB.prepare(
+      `UPDATE posts SET status = 'deleted'
+       WHERE parent_id = ? AND kind = 'reply' AND status <> 'deleted'`,
+    )
+      .bind(id)
+      .run();
+  }
   if (gone.kind === "reply" && gone.parent_id) {
     await env.DB.prepare(
       "UPDATE posts SET reply_count = MAX(0, reply_count - 1) WHERE id = ?",

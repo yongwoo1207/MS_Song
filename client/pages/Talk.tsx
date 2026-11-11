@@ -50,10 +50,7 @@ export default function Talk() {
     edit.mutate(
       { postId: m.id, body, ...(title ? { title } : {}) },
       {
-        onSuccess: () => {
-          setEditingId(null);
-          toast("고쳤어요");
-        },
+        onSuccess: () => setEditingId(null),
         onError,
       },
     );
@@ -67,7 +64,6 @@ export default function Talk() {
     if (!m) return;
     remove.mutate(m.id, {
       onSuccess: () => {
-        toast("지웠어요");
         if (m.kind === "reply") return;
         if (window.history.length > 1) navigate(-1);
         else navigate("/community", { replace: true });
@@ -235,7 +231,6 @@ export default function Talk() {
                                 onSuccess: () => {
                                   done();
                                   setAnswering(null);
-                                  toast("답글을 남겼어요");
                                 },
                                 onError,
                               },
@@ -284,10 +279,7 @@ export default function Talk() {
                   reply.mutate(
                     { body, author },
                     {
-                      onSuccess: () => {
-                        done();
-                        toast("댓글을 남겼어요");
-                      },
+                      onSuccess: () => done(),
                       onError,
                     },
                   )

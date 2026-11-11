@@ -69,7 +69,6 @@ export default function MemoriesPanel({
       {
         onSuccess: () => {
           setText("");
-          toast("추억을 남겼어요");
         },
         onError: (err) =>
           setError(err instanceof Error ? err.message : "저장하지 못했어요"),
