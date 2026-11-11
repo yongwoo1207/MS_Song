@@ -16,6 +16,7 @@
  *   POST   /api/posts                write a song memory (NewSongRecord),
  *                                    a 커뮤니티 글 (NewCommunityPost),
  *                                    a 소통 글 (NewTalk) or a reply (NewReply)
+ *   PATCH  /api/posts/:id            edit your own post ({ title?, body })
  *   DELETE /api/posts/:id            delete your own post
  *   POST   /api/posts/:id/like       like / unlike
  *   POST   /api/posts/:id/report     report ({ reason })
@@ -203,6 +204,7 @@ interface PostRow {
   like_count: number;
   reply_count: number;
   created_at: string;
+  edited_at: string | null;
   author_id: string;
   status: "visible" | "hidden" | "deleted";
   liked_by_me: number;
@@ -232,6 +234,7 @@ const toApi = (r: PostRow, me: string | null, asker?: string): ApiPost => ({
   replyTo: r.reply_to,
   ...(asker ? { byAsker: r.author_id === asker } : {}),
   hidden: r.status === "hidden",
+  editedAt: r.edited_at ?? null,
 });
 
 const parse = <S extends z.ZodTypeAny>(
@@ -747,6 +750,48 @@ async function visiblePost(db: D1Database, id: string) {
   if (!row) throw new HttpError(404, "글을 찾을 수 없어요");
 }
 
+/** Longest body per kind, as when writing. */
+const MAX_BODY: Record<ApiPost["kind"], number> = {
+  record: RECORD_MAX_LENGTH,
+  post: COMMUNITY_MAX_LENGTH,
+  talk: TALK_MAX_LENGTH,
+  reply: REPLY_MAX_LENGTH,
+};
+
+/** Edit your own visible post: its body, and the title of a 글. */
+async function editPost(req: Request, env: Env, id: string) {
+  const me = await authorOf(req);
+  if (!me) throw new HttpError(401, "기기 정보가 없어요");
+  const row = await env.DB.prepare(
+    `SELECT kind FROM posts
+     WHERE id = ? AND author_id = ? AND status = 'visible'`,
+  )
+    .bind(id, me)
+    .first<{ kind: ApiPost["kind"] }>();
+  if (!row) throw new HttpError(404, "고칠 수 있는 글이 아니에요");
+  const titled = row.kind === "post" || row.kind === "talk";
+  const input = parse(
+    z.object({
+      body: text(MAX_BODY[row.kind]),
+      // left out: the title stays (older 글 have none)
+      title: titled ? Title.optional() : z.undefined().optional(),
+    }),
+    await readJson(req),
+  );
+  await env.DB.prepare(
+    `UPDATE posts
+     SET body = ?, title = COALESCE(?, title),
+         edited_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+     WHERE id = ?`,
+  )
+    .bind(input.body, input.title ?? null, id)
+    .run();
+  const post = await env.DB.prepare(`${SELECT_POST} WHERE p.id = ?2`)
+    .bind(me, id)
+    .first<PostRow>();
+  return json({ post: toApi(post!, me) });
+}
+
 async function deletePost(req: Request, env: Env, id: string) {
   const me = await authorOf(req);
   if (!me) throw new HttpError(401, "기기 정보가 없어요");
@@ -864,6 +909,8 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
     if (req.method === "POST") return createPost(req, env);
   } else if (!action && req.method === "GET") {
     return getThread(req, env, id);
+  } else if (!action && req.method === "PATCH") {
+    return editPost(req, env, id);
   } else if (!action && req.method === "DELETE") {
     return deletePost(req, env, id);
   } else if (action === "like" && req.method === "POST") {

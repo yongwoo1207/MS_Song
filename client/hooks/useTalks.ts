@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invalidatePosts } from "./postsCache";
 import { memoryStore, type MemoryAuthor } from "@/lib/memories";
+import type { EditPost } from "@shared/posts";
 import { talkApi } from "@/lib/talks";
 
-/** One 커뮤니티 글 or 소통 글 with its 댓글, plus reply / delete / like. */
+/** One 커뮤니티 글 with its 댓글, plus reply / edit / delete / like. */
 export function useThread(id: string | undefined) {
   const qc = useQueryClient();
   const thread = useQuery({
@@ -22,6 +23,11 @@ export function useThread(id: string | undefined) {
     }) => talkApi.reply({ parentId: id!, ...input }),
     onSuccess: refresh,
   });
+  const edit = useMutation({
+    mutationFn: ({ postId, ...input }: EditPost & { postId: string }) =>
+      memoryStore.edit(postId, input),
+    onSuccess: refresh,
+  });
   const remove = useMutation({
     mutationFn: (postId: string) => memoryStore.remove(postId),
     onSuccess: refresh,
@@ -38,6 +44,7 @@ export function useThread(id: string | undefined) {
     error: thread.error,
     refetch: thread.refetch,
     reply,
+    edit,
     remove,
     like,
   };

@@ -17,6 +17,8 @@ export default function PostComposer({
   autoFocus = true,
   titleMaxLength,
   titlePlaceholder = "제목",
+  initialTitle = "",
+  initialBody = "",
   onCancel,
   onSubmit,
 }: {
@@ -33,11 +35,14 @@ export default function PostComposer({
   /** Set to ask for a title above the text */
   titleMaxLength?: number;
   titlePlaceholder?: string;
+  /** Editing: the text there now */
+  initialTitle?: string;
+  initialBody?: string;
   onCancel?: () => void;
   onSubmit: (body: string, done: () => void, title: string) => void;
 }) {
-  const [title, setTitle] = useState("");
-  const [text, setText] = useState("");
+  const [title, setTitle] = useState(initialTitle);
+  const [text, setText] = useState(initialBody);
   const [error, setError] = useState("");
   const withTitle = titleMaxLength !== undefined;
 

@@ -125,6 +125,14 @@ export interface ApiPost {
   byAsker?: boolean;
   /** Hidden after reports. Only ever true in my own list. */
   hidden?: boolean;
+  /** When the writer last edited it; null if never. */
+  editedAt?: string | null;
+}
+
+/** Body of PATCH /api/posts/:id. `title` only for 글 that have one. */
+export interface EditPost {
+  title?: string;
+  body: string;
 }
 
 /** GET /api/song-counts */

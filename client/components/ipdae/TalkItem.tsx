@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ChevronRight, MessageCircle } from "lucide-react";
+import { ChevronRight, Heart, MessageCircle } from "lucide-react";
 import { type Memory, authorLine, timeAgo } from "@/lib/memories";
 import { cn } from "@/lib/utils";
 
@@ -46,18 +46,33 @@ export default function TalkItem({
           >
             {m.body}
           </span>
-          <span
-            className={cn(
-              "flex items-center gap-1 text-xs font-bold",
-              m.replies > 0 ? "text-primary" : "text-ink-icon",
-            )}
-          >
-            <MessageCircle
-              className="size-3.5"
-              strokeWidth={2.2}
-              aria-hidden="true"
-            />
-            {m.replies > 0 ? `댓글 ${m.replies}` : "아직 댓글이 없어요"}
+          <span className="flex items-center gap-3 text-xs font-bold text-ink-icon">
+            <span
+              className={cn(
+                "flex items-center gap-1",
+                m.likes > 0 && "text-primary",
+              )}
+            >
+              <Heart
+                className={cn("size-3.5", m.likedByMe && "fill-current")}
+                strokeWidth={2.2}
+                aria-hidden="true"
+              />
+              좋아요 {m.likes}
+            </span>
+            <span
+              className={cn(
+                "flex items-center gap-1",
+                m.replies > 0 && "text-primary",
+              )}
+            >
+              <MessageCircle
+                className="size-3.5"
+                strokeWidth={2.2}
+                aria-hidden="true"
+              />
+              댓글 {m.replies}
+            </span>
           </span>
         </span>
         <ChevronRight

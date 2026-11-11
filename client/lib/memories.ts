@@ -7,6 +7,7 @@ import { format } from "date-fns";
 import {
   type ApiPost,
   type ApiSongStats,
+  type EditPost,
   DEVICE_HEADER,
   type FeedTopic,
   type PostBranch,
@@ -70,6 +71,8 @@ export interface MemoryStore {
   addPost(input: NewPost): Promise<Memory>;
   add(input: NewMemory): Promise<Memory>;
   remove(id: string): Promise<void>;
+  /** Edit my own post or 댓글 */
+  edit(id: string, input: EditPost): Promise<Memory>;
   toggleLike(id: string): Promise<{ liked: boolean; likes: number }>;
   /** Everything written from this device, hidden ones too. */
   listMine(): Promise<Memory[]>;
@@ -150,6 +153,13 @@ export const apiMemoryStore: MemoryStore = {
   },
   async remove(id) {
     await call(`/${encodeURIComponent(id)}`, { method: "DELETE" });
+  },
+  async edit(id, input) {
+    const data = await call<{ post: Memory }>(`/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
+    return data.post;
   },
   toggleLike(id) {
     return call(`/${encodeURIComponent(id)}/like`, { method: "POST" });

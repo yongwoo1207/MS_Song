@@ -10,6 +10,7 @@ import { useServicePlan } from "@/hooks/useServicePlan";
 import { useThread } from "@/hooks/useTalks";
 import { type Memory, authorLine, timeAgo, writerOf } from "@/lib/memories";
 import { REPLY_MAX_LENGTH, groupReplies } from "@/lib/talks";
+import { COMMUNITY_MAX_LENGTH, TITLE_MAX_LENGTH } from "@shared/posts";
 import { cn } from "@/lib/utils";
 
 /**
@@ -28,6 +29,7 @@ export default function Talk() {
     error,
     refetch,
     reply,
+    edit,
     remove,
     like,
   } = useThread(id);
@@ -41,6 +43,20 @@ export default function Talk() {
     group: string;
     to: Memory;
   } | null>(null);
+
+  // The post or 댓글 being edited in place
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const saveEdit = (m: Memory, body: string, title?: string) =>
+    edit.mutate(
+      { postId: m.id, body, ...(title ? { title } : {}) },
+      {
+        onSuccess: () => {
+          setEditingId(null);
+          toast("고쳤어요");
+        },
+        onError,
+      },
+    );
 
   // Asked in a dialog first (see ConfirmDelete)
   const [deleting, setDeleting] = useState<Memory | null>(null);
@@ -96,21 +112,45 @@ export default function Talk() {
                   <span className="shrink-0 font-bold">· 내 글</span>
                 )}
                 <span className="flex-1" />
-                <span className="shrink-0">{timeAgo(post.createdAt)}</span>
+                <When m={post} />
               </div>
-              {post.title && (
-                <h2 className="break-words text-[17px] font-bold leading-snug">
-                  {post.title}
-                </h2>
+              {editingId === post.id ? (
+                <div className="pb-2">
+                  <PostComposer
+                    id="edit-post"
+                    label="글 고치기"
+                    hint="고친 글에는 '수정됨'이 붙어요"
+                    titleMaxLength={post.title ? TITLE_MAX_LENGTH : undefined}
+                    initialTitle={post.title ?? ""}
+                    initialBody={post.body}
+                    placeholder="내용"
+                    maxLength={COMMUNITY_MAX_LENGTH}
+                    submitLabel="저장"
+                    saving={edit.isPending}
+                    onCancel={() => setEditingId(null)}
+                    onSubmit={(body, _done, title) =>
+                      saveEdit(post, body, title)
+                    }
+                  />
+                </div>
+              ) : (
+                <>
+                  {post.title && (
+                    <h2 className="break-words text-[17px] font-bold leading-snug">
+                      {post.title}
+                    </h2>
+                  )}
+                  <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">
+                    {post.body}
+                  </p>
+                  <Actions
+                    post={post}
+                    onLike={() => like.mutate(post.id, { onError })}
+                    onEdit={() => setEditingId(post.id)}
+                    onDelete={() => onDelete(post)}
+                  />
+                </>
               )}
-              <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">
-                {post.body}
-              </p>
-              <Actions
-                post={post}
-                onLike={() => like.mutate(post.id, { onError })}
-                onDelete={() => onDelete(post)}
-              />
             </article>
 
             <h2 className="px-1 text-[13px] font-bold">
@@ -130,6 +170,11 @@ export default function Talk() {
                     {g.top ? (
                       <Comment
                         memory={g.top}
+                        editing={editingId === g.top.id}
+                        saving={edit.isPending}
+                        onEdit={() => setEditingId(g.top!.id)}
+                        onCancelEdit={() => setEditingId(null)}
+                        onSave={(body) => saveEdit(g.top!, body)}
                         onLike={() => like.mutate(g.top!.id, { onError })}
                         onDelete={() => onDelete(g.top!)}
                         onAnswer={
@@ -155,6 +200,11 @@ export default function Talk() {
                             <Comment
                               memory={a}
                               answer
+                              editing={editingId === a.id}
+                              saving={edit.isPending}
+                              onEdit={() => setEditingId(a.id)}
+                              onCancelEdit={() => setEditingId(null)}
+                              onSave={(body) => saveEdit(a, body)}
                               onLike={() => like.mutate(a.id, { onError })}
                               onDelete={() => onDelete(a)}
                               onAnswer={
@@ -263,16 +313,36 @@ export default function Talk() {
   );
 }
 
-/** A 댓글, or with `answer` a 대댓글 under one. */
+/** "3시간 전", plus "· 수정됨" once edited. */
+function When({ m }: { m: Memory }) {
+  return (
+    <span className="shrink-0">
+      {timeAgo(m.createdAt)}
+      {m.editedAt && " · 수정됨"}
+    </span>
+  );
+}
+
+/** A 댓글, or with `answer` a 대댓글 under one; editable in place. */
 function Comment({
   memory: r,
   answer,
+  editing,
+  saving,
+  onEdit,
+  onCancelEdit,
+  onSave,
   onLike,
   onDelete,
   onAnswer,
 }: {
   memory: Memory;
   answer?: boolean;
+  editing: boolean;
+  saving: boolean;
+  onEdit: () => void;
+  onCancelEdit: () => void;
+  onSave: (body: string) => void;
   onLike: () => void;
   onDelete: () => void;
   onAnswer?: () => void;
@@ -293,17 +363,37 @@ function Comment({
         <span className="truncate">{authorLine(r)}</span>
         {r.mine && <span className="shrink-0 font-bold">· 내 글</span>}
         <span className="flex-1" />
-        <span className="shrink-0">{timeAgo(r.createdAt)}</span>
+        <When m={r} />
       </div>
-      <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-        {r.body}
-      </p>
-      <Actions
-        post={r}
-        onLike={onLike}
-        onDelete={onDelete}
-        onAnswer={onAnswer}
-      />
+      {editing ? (
+        <div className="pb-1.5">
+          <PostComposer
+            id={`edit-${r.id}`}
+            label={answer ? "답글 고치기" : "댓글 고치기"}
+            hint="고친 댓글에는 '수정됨'이 붙어요"
+            initialBody={r.body}
+            placeholder="내용"
+            maxLength={REPLY_MAX_LENGTH}
+            submitLabel="저장"
+            saving={saving}
+            onCancel={onCancelEdit}
+            onSubmit={(body) => onSave(body)}
+          />
+        </div>
+      ) : (
+        <>
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+            {r.body}
+          </p>
+          <Actions
+            post={r}
+            onLike={onLike}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onAnswer={onAnswer}
+          />
+        </>
+      )}
     </div>
   );
 }
@@ -311,11 +401,13 @@ function Comment({
 function Actions({
   post: m,
   onLike,
+  onEdit,
   onDelete,
   onAnswer,
 }: {
   post: Memory;
   onLike: () => void;
+  onEdit: () => void;
   onDelete: () => void;
   /** Open the 답글 box (댓글 only) */
   onAnswer?: () => void;
@@ -349,6 +441,15 @@ function Actions({
         </button>
       )}
       <span className="flex-1" />
+      {m.mine && (
+        <button
+          type="button"
+          onClick={onEdit}
+          className="h-8 rounded-lg px-1.5 text-xs text-muted-foreground hover:text-foreground"
+        >
+          수정
+        </button>
+      )}
       {m.mine && (
         <button
           type="button"
