@@ -46,7 +46,9 @@ export default function Community() {
     status.status === "serving"
       ? `${status.current.rank} · ${dLabel(status.daysLeft)}`
       : status.status === "done"
-        ? "예비역"
+        ? status.reserve.kind === "민방위"
+          ? "민방위"
+          : "예비역"
         : "입대 전";
 
   return (

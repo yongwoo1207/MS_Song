@@ -41,7 +41,7 @@ export default function Dday() {
     status.status === "serving"
       ? `${status.current.rank} · ${status.dayOfService.toLocaleString()}일째`
       : status.status === "done"
-        ? "예비역 · 전역 완료"
+        ? `${status.reserve.kind === "민방위" ? "민방위" : "예비역"} · 전역 완료`
         : `입대까지 ${dLabel(status.daysLeft)}`;
 
   return (
@@ -145,11 +145,36 @@ export default function Dday() {
           }}
         >
           {status.status === "serving" ? (
-            <DdayCard plan={plan} status={status} />
+            <>
+              <DdayCard plan={plan} status={status} />
+              <MilestoneList
+                title="다가오는 날"
+                items={status.upcoming}
+                strong="전역"
+              />
+            </>
           ) : status.status === "done" ? (
-            <DoneCard plan={plan} status={status} />
+            <>
+              <DoneCard plan={plan} status={status} />
+              <MilestoneList
+                title="다가오는 기념일"
+                items={status.anniversaries}
+                action={
+                  <span className="text-xs font-bold text-primary">
+                    지금 {reserveLabel(status.reserve)}
+                  </span>
+                }
+              />
+            </>
           ) : (
-            <NotYetCard plan={plan} status={status} />
+            <>
+              <NotYetCard plan={plan} status={status} />
+              <MilestoneList
+                title="입대 후 일정"
+                items={status.upcoming}
+                strong="전역"
+              />
+            </>
           )}
           {status.status !== "notYet" && <RankTopSongs plan={plan} />}
         </CardSnapshot>

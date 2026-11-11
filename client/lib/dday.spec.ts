@@ -37,6 +37,8 @@ describe("ddayStatus (serving)", () => {
       ["군생활 절반", "2026-12-08", 32],
       ["병장 진급", "2027-05-09", 184],
       ["전역", "2027-09-08", 306],
+      // 일병 is past: one 예비군·민방위 day keeps five
+      ["예비군 끝", "2035-12-31", 3342],
     ]);
     expect(fmt(halfwayDate(plan))).toBe("2026-12-08");
   });
@@ -46,7 +48,13 @@ describe("ddayStatus (serving)", () => {
     if (late.status !== "serving") throw new Error(late.status);
     expect(late.current.rank).toBe("병장");
     expect(late.nextPromotion).toBeNull();
-    expect(late.upcoming.map((m) => m.label)).toEqual(["전역"]);
+    expect(late.upcoming.map((m) => m.label)).toEqual([
+      "전역",
+      "예비군 1년차",
+      "전역 1주년",
+      "예비군 끝",
+      "민방위 시작",
+    ]);
   });
 
   it("counts discharge day itself as D-day", () => {

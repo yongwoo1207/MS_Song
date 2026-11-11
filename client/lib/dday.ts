@@ -105,6 +105,23 @@ function reserveMilestones(discharge: Date, today: Date): Milestone[] {
   ];
 }
 
+/** 현역 "다가오는 날" is always this long (절반 + 진급 3번 + 전역). */
+export const UPCOMING_LENGTH = 5;
+
+/**
+ * Days after 전역 that fill 현역 "다가오는 날" as 진급 pass, most wanted
+ * first. 민방위 끝 needs the birth year, which we don't ask.
+ */
+function afterService(discharge: Date, today: Date): Milestone[] {
+  const out = discharge.getFullYear();
+  return [
+    milestone("예비군 끝", new Date(out + RESERVE_YEARS, 11, 31), today),
+    milestone("민방위 시작", new Date(out + RESERVE_YEARS + 1, 0, 1), today),
+    milestone("예비군 1년차", new Date(out + 1, 0, 1), today),
+    milestone("전역 1주년", addYears(discharge, 1), today),
+  ];
+}
+
 /** "예비군 3년차", "민방위 1년차"; 전역한 해는 "예비군 편성" */
 export const reserveLabel = ({ kind, year }: ReserveStage) =>
   year === 0 ? `${kind} 편성` : `${kind} ${year}년차`;
@@ -154,13 +171,19 @@ export function ddayStatus(
     ? milestone(`${later[0].rank} 진급`, later[0].start, today)
     : null;
 
-  const upcoming = [
+  const service = [
     milestone("군생활 절반", halfwayDate(plan), today),
     ...later.map((p) => milestone(`${p.rank} 진급`, p.start, today)),
     milestone("전역", plan.discharge, today),
-  ]
-    .filter((m) => m.daysLeft >= 0)
-    .sort((a, b) => a.daysLeft - b.daysLeft);
+  ].filter((m) => m.daysLeft >= 0);
+  // Keep the list the same length: past 진급 make room for 예비군·민방위
+  const upcoming = [
+    ...service,
+    ...afterService(plan.discharge, today).slice(
+      0,
+      Math.max(0, UPCOMING_LENGTH - service.length),
+    ),
+  ].sort((a, b) => a.daysLeft - b.daysLeft);
 
   return {
     status: "serving",

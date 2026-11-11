@@ -13,6 +13,7 @@ import EditDatesDrawer from "@/components/ipdae/EditDatesDrawer";
 import { useServicePlan } from "@/hooks/useServicePlan";
 import { useSaveEnlistment } from "@/hooks/useSavedEnlistment";
 import { usePlayer } from "@/hooks/usePlayer";
+import { useSwipe } from "@/hooks/useSwipe";
 import { writerOf } from "@/lib/memories";
 import { isLockedRank } from "@/lib/dday";
 import { RANKS, type Rank, rankOn } from "@/lib/service";
@@ -33,6 +34,13 @@ export default function Result() {
   );
   const [tab, setTab] = useState<Rank>(() => current ?? "이병");
   const [editing, setEditing] = useState(false);
+  // Swipe sideways for the next / previous rank's chart
+  const swipe = useSwipe((dir) => {
+    const next = RANKS[RANKS.indexOf(tab) + dir];
+    if (!next) return;
+    setTab(next);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
 
   if (!plan) return <Navigate to="/" replace />;
 
@@ -45,19 +53,21 @@ export default function Result() {
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as Rank)}>
         <RankTabs locked={locked} />
-        {plan.periods.map((period) => (
-          <TabsContent key={period.rank} value={period.rank} className="mt-0">
-            {locked.includes(period.rank) ? (
-              <LockedRank period={period} />
-            ) : (
-              <RankChartPanel
-                period={period}
-                player={player}
-                current={period.rank === current}
-              />
-            )}
-          </TabsContent>
-        ))}
+        <div {...swipe} className="min-h-[50vh] touch-pan-y">
+          {plan.periods.map((period) => (
+            <TabsContent key={period.rank} value={period.rank} className="mt-0">
+              {locked.includes(period.rank) ? (
+                <LockedRank period={period} />
+              ) : (
+                <RankChartPanel
+                  period={period}
+                  player={player}
+                  current={period.rank === current}
+                />
+              )}
+            </TabsContent>
+          ))}
+        </div>
       </Tabs>
 
       <BottomNav />
