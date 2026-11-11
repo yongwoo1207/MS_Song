@@ -62,6 +62,7 @@ export default function Result() {
                 <RankChartPanel
                   period={period}
                   player={player}
+                  author={writerOf(plan)}
                   current={period.rank === current}
                 />
               )}

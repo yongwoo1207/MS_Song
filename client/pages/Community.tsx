@@ -9,6 +9,7 @@ import MemoryItem from "@/components/ipdae/MemoryItem";
 import PostComposer from "@/components/ipdae/PostComposer";
 import SongPlayer from "@/components/ipdae/SongPlayer";
 import TalkItem from "@/components/ipdae/TalkItem";
+import SongLikeItem from "@/components/ipdae/SongLikeItem";
 import { useServicePlan } from "@/hooks/useServicePlan";
 import { useCommunityFeed } from "@/hooks/useCommunityFeed";
 import { type BoardTopic, TOPICS, topicOf } from "@/lib/boards";
@@ -199,7 +200,13 @@ function Board({
         ) : (
           <ul className="flex flex-col gap-2" aria-label="커뮤니티 글">
             {feed.posts.map((m) =>
-              m.kind === "record" ? (
+              m.kind === "songlike" ? (
+                <SongLikeItem
+                  key={m.id}
+                  like={m}
+                  onPlay={m.song ? () => setSong(m.song) : undefined}
+                />
+              ) : m.kind === "record" ? (
                 <MemoryItem
                   key={m.id}
                   memory={m}

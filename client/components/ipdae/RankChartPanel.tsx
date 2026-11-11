@@ -9,6 +9,7 @@ import {
 import type { Player } from "@/hooks/usePlayer";
 import { shortDot, youtubeQueue } from "@/lib/format";
 import type { RankPeriod } from "@/lib/service";
+import type { MemoryAuthor } from "@/lib/memories";
 import { Skeleton } from "@/components/ui/skeleton";
 import SongRow from "./SongRow";
 import { PlayIcon } from "./icons";
@@ -17,6 +18,8 @@ import { songKey } from "@shared/api";
 interface RankChartPanelProps {
   period: RankPeriod;
   player: Player;
+  /** Who a heart is from (it shows on the 음악 board) */
+  author: MemoryAuthor;
   /** The rank the user holds now: its chart is still growing */
   current?: boolean;
 }
@@ -25,6 +28,7 @@ interface RankChartPanelProps {
 export default function RankChartPanel({
   period,
   player,
+  author,
   current,
 }: RankChartPanelProps) {
   const { data, isLoading, isError } = useRankChart(period);
@@ -98,9 +102,18 @@ export default function RankChartPanel({
                 likes={likes[songKey(song)]}
                 liked={liked.has(songKey(song))}
                 onLike={() =>
-                  toggleLike.mutate(songKey(song), {
-                    onError: (err) => toast(err.message),
-                  })
+                  toggleLike.mutate(
+                    {
+                      key: songKey(song),
+                      title: song.title,
+                      artist: song.artist,
+                      rank: period.rank,
+                      author,
+                    },
+                    {
+                      onError: (err) => toast(err.message),
+                    },
+                  )
                 }
                 active={
                   queued &&

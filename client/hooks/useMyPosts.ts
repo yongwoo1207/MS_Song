@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ApiSongStats } from "@shared/posts";
-import { memoryStore } from "@/lib/memories";
+import { type SongLikeInput, memoryStore } from "@/lib/memories";
 import { invalidatePosts } from "./postsCache";
 
 /** Everything written from this device, plus delete. */
@@ -48,8 +48,8 @@ export function useSongLikes() {
 export function useToggleSongLike() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (key: string) => memoryStore.toggleSongLike(key),
-    onMutate: async (key) => {
+    mutationFn: (like: SongLikeInput) => memoryStore.toggleSongLike(like),
+    onMutate: async ({ key }) => {
       await qc.cancelQueries({ queryKey: ["song-counts"] });
       const before = qc.getQueryData<ApiSongStats>(["song-counts"]);
       if (before) {
@@ -67,9 +67,12 @@ export function useToggleSongLike() {
       }
       return { before };
     },
-    onError: (_err, _key, ctx) => {
+    onError: (_err, _like, ctx) => {
       if (ctx?.before) qc.setQueryData(["song-counts"], ctx.before);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["song-counts"] }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["song-counts"] });
+      qc.invalidateQueries({ queryKey: ["song-feed"] }); // 음악 board
+    },
   });
 }

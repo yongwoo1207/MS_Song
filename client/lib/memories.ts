@@ -78,7 +78,19 @@ export interface MemoryStore {
   listMine(): Promise<Memory[]>;
   /** memories and hearts per song key */
   songStats(): Promise<ApiSongStats>;
-  toggleSongLike(key: string): Promise<{ liked: boolean; likes: number }>;
+  /** Heart / unheart a song; a heart also shows on the 음악 board. */
+  toggleSongLike(
+    like: SongLikeInput,
+  ): Promise<{ liked: boolean; likes: number }>;
+}
+
+/** A heart on a song: which, from which rank's chart, by whom. */
+export interface SongLikeInput {
+  key: string;
+  title: string;
+  artist: string;
+  rank: PostRank;
+  author: MemoryAuthor;
 }
 
 export const MEMORY_MAX_LENGTH = RECORD_MAX_LENGTH;
@@ -176,10 +188,10 @@ export const apiMemoryStore: MemoryStore = {
       liked: data.liked ?? [],
     };
   },
-  toggleSongLike(key) {
+  toggleSongLike({ key, title, artist, rank, author }) {
     return apiCall("/api/songs/like", {
       method: "POST",
-      body: JSON.stringify({ key }),
+      body: JSON.stringify({ key, title, artist, rank, ...author }),
     });
   },
 };

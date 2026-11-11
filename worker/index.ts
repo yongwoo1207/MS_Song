@@ -43,6 +43,9 @@ import {
   COMMUNITY_MAX_LENGTH,
   FEED_TOPICS,
   FEED_WHO,
+  POPULAR_DAYS,
+  POPULAR_LIMIT,
+  POPULAR_MIN_LIKES,
   REPORT_REASONS,
   TALK_MAX_LENGTH,
   TITLE_MAX_LENGTH,
@@ -122,7 +125,17 @@ const NewReply = z.object({
   body: text(REPLY_MAX_LENGTH),
   ...Author,
 });
-const SongLike = z.object({ key: z.string().min(3).max(300) });
+/** A heart on a song; older clients send only `key`. */
+const SongLike = z.object({
+  key: z.string().min(3).max(300),
+  title: z.string().min(1).max(200).optional(),
+  artist: z.string().min(1).max(200).optional(),
+  rank: z.enum(POST_RANKS).optional(),
+  cohortMonth: z.string().regex(MONTH).optional(),
+  branch: z.enum(POST_BRANCHES).optional(),
+  isReserve: z.boolean().optional(),
+  daysToEnlist: z.number().int().min(0).max(1000).nullable().optional(),
+});
 const Report = z.object({ reason: z.enum(REPORT_REASONS) });
 
 class HttpError extends Error {
@@ -321,6 +334,8 @@ const WHO_SQL = {
  */
 function listCommunityFeed(req: Request, env: Env, url: URL) {
   const feed = url.searchParams.get("feed") ?? "";
+  if (feed === "popular") return listPopular(req, env);
+  if (feed === "music") return listMusic(req, env, url);
   const kinds: readonly string[] =
     feed in FEED_TOPICS
       ? FEED_TOPICS[feed as keyof typeof FEED_TOPICS]
@@ -341,6 +356,79 @@ function listCommunityFeed(req: Request, env: Env, url: URL) {
      ${who.success ? `AND ${WHO_SQL[who.data]}` : ""}`,
     [rank.success ? rank.data : null],
   );
+}
+
+/**
+ * 인기: 글 and 노래 댓글 of the last POPULAR_DAYS days with at least
+ * POPULAR_MIN_LIKES 좋아요, most liked first (a 댓글 counts as 2 좋아요).
+ * One page only.
+ */
+async function listPopular(req: Request, env: Env) {
+  const me = await authorOf(req);
+  const kinds = FEED_TOPICS.popular.map((k) => `'${k}'`).join(", ");
+  const { results } = await env.DB.prepare(
+    `${SELECT_POST}
+     WHERE p.kind IN (${kinds}) AND p.status = 'visible'
+       AND p.like_count >= ?2
+       AND p.created_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?3)
+     ORDER BY p.like_count + 2 * p.reply_count DESC, p.created_at DESC
+     LIMIT ?4`,
+  )
+    .bind(me ?? "", POPULAR_MIN_LIKES, `-${POPULAR_DAYS} days`, POPULAR_LIMIT)
+    .all<PostRow>();
+  return json({ posts: results.map((r) => toApi(r, me)), next: null });
+}
+
+/** Columns of a post row, so song hearts can be listed alongside. */
+const POST_COLUMNS = `p.id, p.kind, p.title, p.body, p.song_key, p.song_title,
+  p.song_artist, p.rank, p.about_month, p.parent_id, p.cohort_month,
+  p.branch, p.is_reserve, p.days_to_enlist, p.reply_to, p.like_count,
+  p.reply_count, p.created_at, p.edited_at, p.author_id, p.status`;
+
+/**
+ * 음악: 노래 댓글 and hearts on songs (kind songlike, id "like-<rowid>"),
+ * newest first, paged like pagedPosts.
+ */
+async function listMusic(req: Request, env: Env, url: URL) {
+  const limit = Math.min(
+    100,
+    Math.max(1, Number(url.searchParams.get("limit")) || PAGE),
+  );
+  const before = url.searchParams.get("before");
+  const cut = before ? before.lastIndexOf("|") : -1;
+  const me = await authorOf(req);
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM (
+       SELECT ${POST_COLUMNS}, (l.author_id IS NOT NULL) AS liked_by_me
+       FROM posts p
+       LEFT JOIN likes l ON l.post_id = p.id AND l.author_id = ?1
+       WHERE p.kind = 'record' AND p.status = 'visible'
+       UNION ALL
+       SELECT 'like-' || s.rowid, 'songlike', NULL, '', s.song_key,
+              s.song_title, s.song_artist, s.rank, NULL, NULL,
+              s.cohort_month, s.branch, s.is_reserve, s.days_to_enlist,
+              NULL, 0, 0, s.created_at, NULL, s.author_id, 'visible', 0
+       FROM song_likes s
+       WHERE s.song_title IS NOT NULL
+     )
+     WHERE ?3 IS NULL OR created_at < ?3 OR (created_at = ?3 AND id < ?4)
+     ORDER BY created_at DESC, id DESC
+     LIMIT ?2`,
+  )
+    .bind(
+      me ?? "",
+      limit + 1,
+      cut > 0 ? before!.slice(0, cut) : null,
+      cut > 0 ? before!.slice(cut + 1) : null,
+    )
+    .all<PostRow>();
+  const page = results.slice(0, limit);
+  const last = page[page.length - 1];
+  return json({
+    posts: page.map((r) => toApi(r, me)),
+    next:
+      results.length > limit && last ? `${last.created_at}|${last.id}` : null,
+  });
 }
 
 /**
@@ -421,12 +509,33 @@ async function songCounts(req: Request, env: Env) {
 }
 
 async function toggleSongLike(req: Request, env: Env) {
-  const { key } = parse(SongLike, await readJson(req));
+  const like = parse(SongLike, await readJson(req));
+  const { key } = like;
   const me = await writer(req, env.DB);
+  // With who and which song, the heart also shows on the 음악 board
+  const shown = !!(
+    like.title &&
+    like.artist &&
+    like.cohortMonth &&
+    like.branch
+  );
   const added = await env.DB.prepare(
-    "INSERT OR IGNORE INTO song_likes (song_key, author_id) VALUES (?, ?)",
+    `INSERT OR IGNORE INTO song_likes
+       (song_key, author_id, song_title, song_artist, rank, cohort_month,
+        branch, is_reserve, days_to_enlist)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(key, me)
+    .bind(
+      key,
+      me,
+      shown ? like.title : null,
+      shown ? like.artist : null,
+      shown ? (like.rank ?? null) : null,
+      shown ? like.cohortMonth : null,
+      shown ? like.branch : null,
+      shown ? (like.isReserve ? 1 : 0) : null,
+      shown && !like.isReserve ? (like.daysToEnlist ?? null) : null,
+    )
     .run();
   const liked = added.meta.changes > 0;
   if (!liked) {
@@ -756,6 +865,7 @@ const MAX_BODY: Record<ApiPost["kind"], number> = {
   post: COMMUNITY_MAX_LENGTH,
   talk: TALK_MAX_LENGTH,
   reply: REPLY_MAX_LENGTH,
+  songlike: 0, // not a post: never found to edit
 };
 
 /** Edit your own visible post: its body, and the title of a 글. */

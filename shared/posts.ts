@@ -32,11 +32,18 @@ export const TITLE_MAX_LENGTH = 40;
  */
 export const FEED_TOPICS = {
   all: ["post", "talk", "record"],
+  // 인기: of these, the last POPULAR_DAYS days with POPULAR_MIN_LIKES+ 좋아요
+  popular: ["post", "talk", "record"],
   story: ["post"],
   music: ["record"],
   talk: ["talk"],
 } as const satisfies Record<string, readonly ApiPost["kind"][]>;
 export type FeedTopic = keyof typeof FEED_TOPICS;
+
+/** 인기 board: posts this recent with this many 좋아요, top POPULAR_LIMIT. */
+export const POPULAR_DAYS = 7;
+export const POPULAR_MIN_LIKES = 3;
+export const POPULAR_LIMIT = 50;
 
 /** Who wrote it, as a feed filter. */
 export const FEED_WHO = ["reserve", "serving", "pre"] as const;
@@ -100,7 +107,8 @@ export interface NewReply extends AuthorFields {
 /** A post as the API returns it. The author is never exposed. */
 export interface ApiPost {
   id: string;
-  kind: "record" | "post" | "talk" | "reply";
+  /** songlike: someone hearted a song (음악 board only; body is empty) */
+  kind: "record" | "post" | "talk" | "reply" | "songlike";
   /** 커뮤니티 글 only; older ones have none. */
   title: string | null;
   body: string;

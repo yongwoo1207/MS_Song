@@ -113,7 +113,18 @@ describe("activity API", () => {
       liked: [],
     });
     await apiMemoryStore.listMine();
-    await apiMemoryStore.toggleSongLike("a|b");
+    await apiMemoryStore.toggleSongLike({
+      key: "a|b",
+      title: "b",
+      artist: "a",
+      rank: "일병",
+      author: {
+        cohortMonth: "2021-03",
+        branch: "카투사",
+        isReserve: false,
+        daysToEnlist: null,
+      },
+    });
     await apiMemoryStore.feed("music", "일병", "c");
     await apiMemoryStore.feed("all", "예비역");
     await apiMemoryStore.feed("talk", "입대 예정");
@@ -139,6 +150,17 @@ describe("activity API", () => {
       "/api/posts?feed=talk&limit=20&who=pre",
       "/api/posts",
     ]);
+    // A heart carries the song and who, for the 음악 board
+    expect(JSON.parse(fetch.mock.calls[3][1]!.body as string)).toEqual({
+      key: "a|b",
+      title: "b",
+      artist: "a",
+      rank: "일병",
+      cohortMonth: "2021-03",
+      branch: "카투사",
+      isReserve: false,
+      daysToEnlist: null,
+    });
     expect(
       JSON.parse(
         fetch.mock.calls[fetch.mock.calls.length - 1][1]!.body as string,

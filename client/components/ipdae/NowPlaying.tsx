@@ -116,9 +116,16 @@ export default function NowPlaying({
         <button
           type="button"
           onClick={() =>
-            toggleLike.mutate(key, {
-              onError: (err) => toast(err.message),
-            })
+            toggleLike.mutate(
+              {
+                key: key!,
+                title: song!.title,
+                artist: song!.artist,
+                rank: queue!.rank,
+                author,
+              },
+              { onError: (err) => toast(err.message) },
+            )
           }
           aria-pressed={hearted}
           aria-label={`이 노래 좋아요 ${hearts}`}
