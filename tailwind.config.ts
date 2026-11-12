@@ -22,6 +22,8 @@ export default {
           "sans-serif",
         ],
         mono: ['"IBM Plex Mono"', "ui-monospace", "monospace"],
+        /* Latin only, for the IPDAEGOK wordmark */
+        brand: ["Inter", "system-ui", "sans-serif"],
       },
       colors: {
         field: "hsl(var(--field))",

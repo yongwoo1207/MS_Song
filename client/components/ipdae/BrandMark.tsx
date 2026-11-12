@@ -1,24 +1,33 @@
-/** Dog-tag mark + wordmark shown above the input headline. */
+import { cn } from "@/lib/utils";
+
+/**
+ * The 군번줄 mark on its own, in the current text colour. Same drawing as
+ * the tab icon (public/favicon.svg), so the two always match.
+ */
+export function TagMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 100 100"
+      aria-hidden="true"
+      className={cn("shrink-0", className)}
+    >
+      <path
+        transform="rotate(16 50 50)"
+        fill="currentColor"
+        fillRule="evenodd"
+        d="M34,6 h32 a11,11 0 0 1 11,11 v66 a11,11 0 0 1 -11,11 h-32 a11,11 0 0 1 -11,-11 v-66 a11,11 0 0 1 11,-11 z
+           M53,24 a7,7 0 1 0 14,0 a7,7 0 1 0 -14,0 z"
+      />
+    </svg>
+  );
+}
+
+/** 군번줄 mark + IPDAEGOK wordmark, shown above the input headline. */
 export default function BrandMark() {
   return (
-    <div className="flex items-center gap-2">
-      <svg
-        width="28"
-        height="28"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-        className="text-primary"
-      >
-        <rect x="5" y="3" width="14" height="18" rx="7" />
-        <circle cx="12" cy="7" r="1.2" />
-        <path d="M9 13h6M9 16h4" />
-      </svg>
-      <span className="font-mono text-[13px] font-semibold tracking-[0.08em] text-primary">
+    <div className="flex items-center gap-2 text-primary">
+      <TagMark className="size-[26px]" />
+      <span className="font-brand text-[15px] font-bold leading-none tracking-[0.09em]">
         IPDAEGOK
       </span>
     </div>

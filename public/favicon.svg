@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="입대곡">
+  <style>
+    .tag { fill: #4A5A2A }
+    /* dark browser tabs: olive on near-black is too faint, so go light */
+    @media (prefers-color-scheme: dark) {
+      .tag { fill: #E4E8D2 }
+    }
+  </style>
+  <path
+    class="tag"
+    transform="rotate(16 50 50)"
+    fill-rule="evenodd"
+    d="M34,6 h32 a11,11 0 0 1 11,11 v66 a11,11 0 0 1 -11,11 h-32 a11,11 0 0 1 -11,-11 v-66 a11,11 0 0 1 11,-11 z
+       M53,24 a7,7 0 1 0 14,0 a7,7 0 1 0 -14,0 z"
+  />
+</svg>
