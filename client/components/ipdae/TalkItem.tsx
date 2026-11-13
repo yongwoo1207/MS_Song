@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { ChevronRight, Heart, MessageCircle } from "lucide-react";
-import { type Memory, authorLine, timeAgo } from "@/lib/memories";
+import { type Memory, authorLine, isPopular, timeAgo } from "@/lib/memories";
+import PopularBadge from "./PopularBadge";
 import { cn } from "@/lib/utils";
 
 /** A 커뮤니티 글 in a list: who, title, the start of it, 댓글 count. */
@@ -30,6 +31,7 @@ export default function TalkItem({
           <span className="flex items-center gap-1.5 text-[11px] text-ink-icon">
             <span className="truncate">{authorLine(m)}</span>
             {m.mine && <span className="shrink-0 font-bold">· 내 글</span>}
+            {isPopular(m) && <PopularBadge />}
             <span className="flex-1" />
             <span className="shrink-0">{timeAgo(m.createdAt)}</span>
           </span>

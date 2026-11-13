@@ -4,11 +4,18 @@ import { CornerDownRight, Heart } from "lucide-react";
 import { toast } from "sonner";
 import ConfirmDelete from "@/components/ipdae/ConfirmDelete";
 import MobileShell from "@/components/ipdae/MobileShell";
+import PopularBadge from "@/components/ipdae/PopularBadge";
 import PostComposer from "@/components/ipdae/PostComposer";
 import SubHeader from "@/components/ipdae/SubHeader";
 import { useServicePlan } from "@/hooks/useServicePlan";
 import { useThread } from "@/hooks/useTalks";
-import { type Memory, authorLine, timeAgo, writerOf } from "@/lib/memories";
+import {
+  type Memory,
+  authorLine,
+  isPopular,
+  timeAgo,
+  writerOf,
+} from "@/lib/memories";
 import { REPLY_MAX_LENGTH, groupReplies } from "@/lib/talks";
 import { COMMUNITY_MAX_LENGTH, TITLE_MAX_LENGTH } from "@shared/posts";
 import { cn } from "@/lib/utils";
@@ -107,6 +114,7 @@ export default function Talk() {
                 {post.mine && (
                   <span className="shrink-0 font-bold">· 내 글</span>
                 )}
+                {isPopular(post) && <PopularBadge />}
                 <span className="flex-1" />
                 <When m={post} />
               </div>

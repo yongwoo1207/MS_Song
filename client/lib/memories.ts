@@ -12,6 +12,7 @@ import {
   type FeedTopic,
   type PostBranch,
   type PostRank,
+  POPULAR_MIN_LIKES,
   RECORD_MAX_LENGTH,
   type SongRef,
 } from "@shared/posts";
@@ -273,3 +274,11 @@ export function timeAgo(iso: string, now = new Date()): string {
   const d = new Date(iso);
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
 }
+
+/**
+ * 인기글: a post with enough 좋아요 to be promoted to the 인기 board
+ * (POPULAR_MIN_LIKES, shared/posts.ts). The board also asks for recency;
+ * the mark on a post only goes by 좋아요.
+ */
+export const isPopular = (m: Pick<Memory, "likes">) =>
+  m.likes >= POPULAR_MIN_LIKES;

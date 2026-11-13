@@ -51,7 +51,7 @@
 ```bash
 npm run dev          # 화면만 (vite, 8080)
 npm run dev:api      # 워커 + 로컬 D1 (8787). /api 를 쓰려면 둘 다 필요
-npm test             # vitest, 현재 53개 통과
+npm test             # vitest, 현재 64개 통과
 npm run typecheck    # tsc && tsc -p worker — worker 쪽을 빼먹지 말 것
 npm run format.fix   # prettier
 ```
@@ -67,11 +67,12 @@ npm run format.fix   # prettier
 ```
 client/
   pages/              화면 하나 = 파일 하나 (Index, Dday, Community, Talk, My,
-                      Notifications, Result, Terms, Privacy, NotFound)
+                      Notifications, Result, Songs, Terms, Privacy, NotFound)
   components/ipdae/   이 서비스 전용 컴포넌트 (32개)
   components/ui/      shadcn/ui 원본. 건드리지 말 것
   hooks/              useServicePlan, useRankChart, useMyPosts …
-  lib/                dday(날짜 계산), charts, cardImage, device, site …
+  lib/                dday(날짜 계산), charts, browse(다른 입대일), cardImage,
+                      device, site …
 shared/               클라이언트·워커가 함께 쓰는 타입과 상수 (posts.ts 등)
 worker/index.ts       API 전부 + scheduled 핸들러. 1100줄 남짓 단일 파일
 migrations/           D1 마이그레이션 (0001~0012)
@@ -182,7 +183,8 @@ npm run db:migrate:remote     # 운영 (wrangler d1 migrations apply DB --remote
 - 회원가입 없이 바로 쓴다. 이 강점은 유지한다
 - 전역일·진급일은 **참고용**이며, 공식 확인이 필요하다고 약관(제7조)과 화면에 명시
 - 차트는 2010년 2월 이후. 음원은 직접 제공하지 않고 YouTube(`youtube-nocookie.com`)로 재생
-- 커뮤니티는 신고 3회 자동 숨김 + 도배 제한으로 관리
+- 커뮤니티는 신고 3회 자동 숨김 + 도배 제한으로 관리. 좋아요 `POPULAR_MIN_LIKES`(5)개를 넘으면 인기글로 올라가고 글에 "인기" 표시가 붙는다
+- 차트는 내 입대일뿐 아니라 **다른 입대일로도** 볼 수 있다(`/songs`, 주소의 `od`·`ob`). 보는 동안 내 입대일은 바뀌지 않는다
 
 **브랜드**
 

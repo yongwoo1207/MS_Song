@@ -42,7 +42,7 @@ export type FeedTopic = keyof typeof FEED_TOPICS;
 
 /** 인기 board: posts this recent with this many 좋아요, top POPULAR_LIMIT. */
 export const POPULAR_DAYS = 7;
-export const POPULAR_MIN_LIKES = 3;
+export const POPULAR_MIN_LIKES = 5;
 export const POPULAR_LIMIT = 50;
 
 /** Who wrote it, as a feed filter. */

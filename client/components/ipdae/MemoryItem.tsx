@@ -2,10 +2,12 @@ import { Heart, Music, Play } from "lucide-react";
 import {
   type Memory,
   cohortLabel,
+  isPopular,
   preEnlistLabel,
   timeAgo,
 } from "@/lib/memories";
 import { cn } from "@/lib/utils";
+import PopularBadge from "./PopularBadge";
 
 /**
  * One record card: who (군번 · 계급), when, body, like and delete.
@@ -72,6 +74,7 @@ export default function MemoryItem({
         {m.mine && (
           <span className="text-[11px] font-bold text-ink-icon">내 글</span>
         )}
+        {isPopular(m) && <PopularBadge />}
         <span className="flex-1" />
         <span className="text-[11px] text-ink-icon">
           {timeAgo(m.createdAt)}

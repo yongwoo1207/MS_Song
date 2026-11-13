@@ -5,10 +5,12 @@ import {
   authorLine,
   cohortLabel,
   cohortMonthOf,
+  isPopular,
   monthParam,
   timeAgo,
   writerOf,
 } from "./memories";
+import { POPULAR_MIN_LIKES } from "@shared/posts";
 import { computeService } from "./service";
 import { groupReplies } from "./talks";
 
@@ -144,5 +146,16 @@ describe("groupReplies", () => {
       ["b", "b", ["b1"]],
       ["x", null, ["x1"]],
     ]);
+  });
+});
+
+describe("isPopular", () => {
+  const post = (likes: number) => ({ likes }) as Memory;
+  it("promotes a post once it reaches POPULAR_MIN_LIKES 좋아요", () => {
+    expect(POPULAR_MIN_LIKES).toBe(5);
+    expect(isPopular(post(POPULAR_MIN_LIKES - 1))).toBe(false);
+    expect(isPopular(post(POPULAR_MIN_LIKES))).toBe(true);
+    expect(isPopular(post(POPULAR_MIN_LIKES + 10))).toBe(true);
+    expect(isPopular(post(0))).toBe(false);
   });
 });

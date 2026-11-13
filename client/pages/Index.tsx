@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { addYears, startOfDay } from "date-fns";
+import { startOfDay } from "date-fns";
 import { Check } from "lucide-react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import MobileShell from "@/components/ipdae/MobileShell";
@@ -7,6 +7,7 @@ import BrandMark from "@/components/ipdae/BrandMark";
 import SiteFooter from "@/components/ipdae/SiteFooter";
 import BranchPicker from "@/components/ipdae/BranchPicker";
 import { loadSavedEnlistment } from "@/hooks/useSavedEnlistment";
+import { CHART_MIN_DAY, inEnlistRange, maxEnlistDay } from "@/lib/browse";
 import { fullDot } from "@/lib/format";
 import {
   type Branch,
@@ -14,12 +15,8 @@ import {
   computeService,
   isBranch,
   parseDay,
-  toDayParam,
 } from "@/lib/service";
 import { cn } from "@/lib/utils";
-
-const MIN_DAY = "2010-02-01"; // chart data starts Feb 2010
-const FUTURE_YEARS = 2; // 입대 예정자: up to two years ahead
 
 type Stage = "pre" | "serving" | "done";
 
@@ -77,8 +74,8 @@ export default function Index() {
   );
 
   // The date is not tied to the stage picked above: any day in range
-  const maxDay = toDayParam(addYears(new Date(), FUTURE_YEARS));
-  const valid = !!parseDay(enlist) && enlist >= MIN_DAY && enlist <= maxDay;
+  const maxDay = maxEnlistDay();
+  const valid = inEnlistRange(enlist);
   const plan = useMemo(
     () => (valid ? computeService(parseDay(enlist)!, branch) : null),
     [valid, enlist, branch],
@@ -167,7 +164,7 @@ export default function Index() {
             id="enlist"
             type="date"
             required
-            min={MIN_DAY}
+            min={CHART_MIN_DAY}
             max={maxDay}
             value={enlist}
             onChange={(e) => setEnlist(e.target.value)}

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Navigate, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
+import { ChevronRight, Users } from "lucide-react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import MobileShell from "@/components/ipdae/MobileShell";
 import AppHeader from "@/components/ipdae/AppHeader";
@@ -50,6 +51,31 @@ export default function Result() {
       <NowPlaying player={player} author={writerOf(plan)} />
 
       <ServiceSummary plan={plan} onEditDates={() => setEditing(true)} />
+
+      <div className="px-4 pt-1">
+        <Link
+          to={`/songs${search}`}
+          className="flex items-center gap-2.5 rounded-2xl border bg-card px-3.5 py-3 text-foreground"
+        >
+          <span
+            aria-hidden="true"
+            className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent text-primary"
+          >
+            <Users className="size-[18px]" strokeWidth={2} />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="text-[14px] font-bold">다른 입대일 노래 보기</span>
+            <span className="text-xs text-muted-foreground">
+              선배·후임의 계급별 차트도 듣고 좋아요를 누를 수 있어요
+            </span>
+          </span>
+          <ChevronRight
+            className="size-4 shrink-0 text-ink-icon"
+            strokeWidth={2}
+            aria-hidden="true"
+          />
+        </Link>
+      </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as Rank)}>
         <RankTabs locked={locked} />
