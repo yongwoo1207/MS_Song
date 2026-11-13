@@ -4,6 +4,7 @@ import { EyeOff, Heart, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import ConfirmDelete from "@/components/ipdae/ConfirmDelete";
 import MobileShell from "@/components/ipdae/MobileShell";
+import SiteFooter from "@/components/ipdae/SiteFooter";
 import SubHeader from "@/components/ipdae/SubHeader";
 import { useMyPosts } from "@/hooks/useMyPosts";
 import { clearSavedEnlistment } from "@/hooks/useSavedEnlistment";
@@ -183,6 +184,7 @@ export default function My() {
         <p className="mt-2 text-center text-[11px] leading-relaxed text-ink-icon">
           브라우저 데이터를 지우면 이 기기에서 쓴 글을 더 이상 관리할 수 없어요.
         </p>
+        <SiteFooter className="mt-5" />
       </main>
       <ConfirmDelete
         what={deleting?.kind === "reply" ? "댓글" : "글"}

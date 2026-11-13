@@ -906,7 +906,8 @@ async function deletePost(req: Request, env: Env, id: string) {
   const me = await authorOf(req);
   if (!me) throw new HttpError(401, "기기 정보가 없어요");
   const gone = await env.DB.prepare(
-    `UPDATE posts SET status = 'deleted'
+    `UPDATE posts
+     SET status = 'deleted', deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
      WHERE id = ? AND author_id = ? AND status <> 'deleted'
      RETURNING kind, parent_id`,
   )
@@ -916,7 +917,8 @@ async function deletePost(req: Request, env: Env, id: string) {
   if (gone.kind === "post" || gone.kind === "talk") {
     // Its 댓글 and 대댓글 go with it (a 댓글 alone keeps its 대댓글)
     await env.DB.prepare(
-      `UPDATE posts SET status = 'deleted'
+      `UPDATE posts
+       SET status = 'deleted', deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
        WHERE parent_id = ? AND kind = 'reply' AND status <> 'deleted'`,
     )
       .bind(id)
@@ -1040,7 +1042,60 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
   throw new HttpError(405, "지원하지 않는 요청이에요");
 }
 
+/**
+ * Posts the writer deleted are hidden at once and destroyed after this
+ * many days (개인정보처리방침 6항). Run daily by the cron trigger in
+ * wrangler.json; `wrangler dev --test-scheduled` triggers it by hand.
+ */
+const PURGE_AFTER_DAYS = 30;
+const PURGE_BATCH = 200; // bound parameters per statement stay well under D1's cap
+const PURGE_ROUNDS = 10;
+
+/** One batch: returns how many posts were destroyed. */
+async function purgeRound(env: Env): Promise<number> {
+  const { results } = await env.DB.prepare(
+    `SELECT id FROM posts
+     WHERE status = 'deleted' AND deleted_at IS NOT NULL
+       AND deleted_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?1)
+     LIMIT ?2`,
+  )
+    .bind(`-${PURGE_AFTER_DAYS} days`, PURGE_BATCH)
+    .all<{ id: string }>();
+  if (results.length === 0) return 0;
+  const ids = results.map((r) => r.id);
+  const marks = ids.map(() => "?").join(", ");
+  const stmt = (sql: string) => env.DB.prepare(sql).bind(...ids);
+  await env.DB.batch([
+    stmt(`DELETE FROM likes WHERE post_id IN (${marks})`),
+    stmt(`DELETE FROM reports WHERE post_id IN (${marks})`),
+    stmt(`DELETE FROM notifications WHERE post_id IN (${marks})`),
+    // 댓글 first: they point at the thread. Threads deleted before replies
+    // were cascaded still have visible ones, so this is not limited by status
+    stmt(`DELETE FROM posts WHERE parent_id IN (${marks}) AND kind = 'reply'`),
+    stmt(`DELETE FROM posts WHERE id IN (${marks})`),
+  ]);
+  return ids.length;
+}
+
+/** Destroy everything past its retention; returns the total. */
+export async function purgeDeleted(env: Env): Promise<number> {
+  let total = 0;
+  for (let i = 0; i < PURGE_ROUNDS; i++) {
+    const n = await purgeRound(env);
+    total += n;
+    if (n < PURGE_BATCH) break;
+  }
+  return total;
+}
+
 export default {
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(
+      purgeDeleted(env).then((n) => {
+        if (n > 0) console.log(`purged ${n} deleted posts`);
+      }),
+    );
+  },
   async fetch(req, env) {
     const url = new URL(req.url);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(req);

@@ -19,5 +19,7 @@
       "migrations_dir": "migrations"
     }
   ],
+  // Destroy posts deleted more than 30 days ago (worker scheduled handler)
+  "triggers": { "crons": ["0 3 * * *"] },
   "observability": { "enabled": true }
 }

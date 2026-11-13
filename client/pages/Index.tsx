@@ -4,6 +4,7 @@ import { Check } from "lucide-react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import MobileShell from "@/components/ipdae/MobileShell";
 import BrandMark from "@/components/ipdae/BrandMark";
+import SiteFooter from "@/components/ipdae/SiteFooter";
 import BranchPicker from "@/components/ipdae/BranchPicker";
 import { loadSavedEnlistment } from "@/hooks/useSavedEnlistment";
 import { fullDot } from "@/lib/format";
@@ -221,6 +222,7 @@ export default function Index() {
         <span className="text-center text-xs text-muted-foreground">
           가입 없이 바로 · 날짜는 이 기기에만 저장돼요
         </span>
+        <SiteFooter className="pt-1" />
       </div>
     </MobileShell>
   );

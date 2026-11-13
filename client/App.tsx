@@ -14,7 +14,8 @@ import My from "./pages/My";
 import Notifications from "./pages/Notifications";
 import Talk from "./pages/Talk";
 import NotFound from "./pages/NotFound";
-import Layout from "@/components/Layout";
+import Terms from "./pages/Terms";
+import Privacy from "./pages/Privacy";
 import VersionWatcher from "@/components/VersionWatcher";
 
 const queryClient = new QueryClient();
@@ -39,15 +40,10 @@ const App = () => (
           <Route path="/me" element={<My />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/talk/:id" element={<Talk />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route
-            path="*"
-            element={
-              <Layout>
-                <NotFound />
-              </Layout>
-            }
-          />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </TooltipProvider>
