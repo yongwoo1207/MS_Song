@@ -10,6 +10,7 @@ import MemoryItem from "@/components/ipdae/MemoryItem";
 import PostComposer from "@/components/ipdae/PostComposer";
 import ReportDialog from "@/components/ipdae/ReportDialog";
 import SongPlayer from "@/components/ipdae/SongPlayer";
+import WriteScreen from "@/components/ipdae/WriteScreen";
 import TalkItem from "@/components/ipdae/TalkItem";
 import SongLikeItem from "@/components/ipdae/SongLikeItem";
 import { useServicePlan } from "@/hooks/useServicePlan";
@@ -74,6 +75,12 @@ export default function Community() {
   );
 }
 
+/** What the player needs for a card's song: the song and its chart month. */
+const playing = (m: Memory) => ({
+  song: m.song!,
+  aboutMonth: m.aboutMonth ?? monthParam(new Date(m.createdAt)),
+});
+
 /** A rank of 현역 now, null for 예비역 and 입대 예정자. */
 const rankNow = (status: Status) =>
   status.status === "serving" ? status.current.rank : null;
@@ -109,8 +116,11 @@ function Board({
   // 신고, asked for a reason first
   const report = useReport();
   const [reporting, setReporting] = useState<Memory | null>(null);
-  // The song memory being listened to
-  const [song, setSong] = useState<SongRef | null>(null);
+  // The song being listened to, with the chart month a 한마디 files under
+  const [song, setSong] = useState<{
+    song: SongRef;
+    aboutMonth: string;
+  } | null>(null);
   const closeSong = useCallback(() => setSong(null), []);
   const [writing, setWriting] = useState(false);
   // Asked in a dialog first (see ConfirmDelete)
@@ -119,10 +129,7 @@ function Board({
   const author = writerOf(plan);
   const who = whoOf(status);
   const onError = (err: Error) => toast(err.message);
-  const openComposer = () => {
-    setWriting(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+  const openComposer = () => setWriting(true);
   const goTopic = (t: BoardTopic) =>
     navigate(`${t.path}${search}`, { replace: true });
 
@@ -135,7 +142,15 @@ function Board({
 
   return (
     <>
-      {song && <SongPlayer song={song} onClose={closeSong} />}
+      {song && (
+        <SongPlayer
+          song={song.song}
+          author={author}
+          rank={rankNow(status)}
+          aboutMonth={song.aboutMonth}
+          onClose={closeSong}
+        />
+      )}
       <div
         className="flex flex-wrap gap-1.5 px-4 pb-2 pt-3"
         role="group"
@@ -153,42 +168,6 @@ function Board({
       </p>
 
       <main className="flex flex-1 flex-col gap-2 px-4 pb-24">
-        {writing && (
-          <section className="flex flex-col gap-2 rounded-2xl border-2 border-primary bg-card px-3 pb-3 pt-3">
-            <PostComposer
-              id="community-composer"
-              label="글쓰기"
-              hint={`${authorLine({ ...author, rank: rankNow(status) })}으로 표시돼요`}
-              titleMaxLength={TITLE_MAX_LENGTH}
-              titlePlaceholder="제목"
-              placeholder={placeholder}
-              maxLength={COMMUNITY_MAX_LENGTH}
-              submitLabel="올리기"
-              saving={feed.add.isPending}
-              onCancel={() => setWriting(false)}
-              onSubmit={(body, done, title) =>
-                feed.add.mutate(
-                  {
-                    kind: "post",
-                    title,
-                    body,
-                    rank: rankNow(status),
-                    author,
-                  },
-                  {
-                    onSuccess: () => {
-                      done();
-                      setWriting(false);
-                      // Show it: 음악 lists only 노래 댓글
-                      if (topic.key !== "all") goTopic(TOPICS[0]);
-                    },
-                    onError,
-                  },
-                )
-              }
-            />
-          </section>
-        )}
         {feed.isLoading ? (
           <p className="py-10 text-center text-[13px] text-muted-foreground">
             불러오는 중…
@@ -227,7 +206,7 @@ function Board({
                   likes={m.song ? (songLikes[m.song.key] ?? 0) : 0}
                   liked={!!m.song && songLiked.has(m.song.key)}
                   memories={m.song ? (songCounts?.[m.song.key] ?? 0) : 0}
-                  onPlay={m.song ? () => setSong(m.song) : undefined}
+                  onPlay={m.song ? () => setSong(playing(m)) : undefined}
                   onLike={
                     m.song
                       ? () =>
@@ -259,7 +238,7 @@ function Board({
                   key={m.id}
                   memory={m}
                   showSong
-                  onPlay={m.song ? () => setSong(m.song) : undefined}
+                  onPlay={m.song ? () => setSong(playing(m)) : undefined}
                   onLike={() => feed.like.mutate(m.id, { onError })}
                   onDelete={() => setDeleting(m)}
                   onReport={() => setReporting(m)}
@@ -287,8 +266,43 @@ function Board({
         )}
       </main>
 
-      {!writing && (
-        <WriteButton onClick={openComposer} controls="community-composer" />
+      <WriteButton onClick={openComposer} controls="community-composer" />
+
+      {writing && (
+        <WriteScreen title="글쓰기" onClose={() => setWriting(false)}>
+          <PostComposer
+            id="community-composer"
+            fill
+            label="글쓰기"
+            hint={`${authorLine({ ...author, rank: rankNow(status) })}으로 표시돼요`}
+            titleMaxLength={TITLE_MAX_LENGTH}
+            titlePlaceholder="제목"
+            placeholder={placeholder}
+            maxLength={COMMUNITY_MAX_LENGTH}
+            submitLabel="올리기"
+            saving={feed.add.isPending}
+            onSubmit={(body, done, title) =>
+              feed.add.mutate(
+                {
+                  kind: "post",
+                  title,
+                  body,
+                  rank: rankNow(status),
+                  author,
+                },
+                {
+                  onSuccess: () => {
+                    done();
+                    setWriting(false);
+                    // Show it: 음악 lists only 노래 좋아요와 한마디
+                    if (topic.key !== "all") goTopic(TOPICS[0]);
+                  },
+                  onError,
+                },
+              )
+            }
+          />
+        </WriteScreen>
       )}
 
       {commenting && (

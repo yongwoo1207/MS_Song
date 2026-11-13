@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ShieldAlert } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 /**
  * Text box with the security warning, a length counter and cancel / submit,
@@ -19,6 +20,7 @@ export default function PostComposer({
   titlePlaceholder = "제목",
   initialTitle = "",
   initialBody = "",
+  fill,
   onCancel,
   onSubmit,
 }: {
@@ -38,6 +40,8 @@ export default function PostComposer({
   /** Editing: the text there now */
   initialTitle?: string;
   initialBody?: string;
+  /** On a screen of its own (WriteScreen): grow to fill it */
+  fill?: boolean;
   onCancel?: () => void;
   onSubmit: (body: string, done: () => void, title: string) => void;
 }) {
@@ -70,11 +74,16 @@ export default function PostComposer({
     <form
       id={id}
       onSubmit={submit}
-      className="flex flex-col gap-1.5 rounded-xl bg-background px-3 pb-2.5 pt-2.5"
+      className={cn(
+        "flex flex-col gap-1.5 bg-background",
+        fill
+          ? "min-h-0 flex-1 px-4 pb-3 pt-3"
+          : "rounded-xl px-3 pb-2.5 pt-2.5",
+      )}
     >
       <label
         htmlFor={withTitle ? `${id}-title` : `${id}-text`}
-        className="text-[12.5px] font-bold"
+        className={cn("text-[12.5px] font-bold", fill && "sr-only")}
       >
         {label}
       </label>
@@ -106,7 +115,7 @@ export default function PostComposer({
         autoFocus={autoFocus && !withTitle}
         value={text}
         maxLength={maxLength}
-        rows={4}
+        rows={fill ? 10 : 4}
         onChange={(e) => {
           setText(e.target.value);
           if (error) setError("");
@@ -114,7 +123,10 @@ export default function PostComposer({
         placeholder={placeholder}
         aria-invalid={!!error}
         aria-describedby={`${id}-help`}
-        className="min-h-[88px] resize-none rounded-xl border border-input bg-field px-3 py-2 text-sm leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+        className={cn(
+          "resize-none rounded-xl border border-input bg-field px-3 py-2 leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+          fill ? "min-h-0 flex-1 text-[15px]" : "min-h-[88px] text-sm",
+        )}
       />
       <div
         id={`${id}-help`}
@@ -142,7 +154,10 @@ export default function PostComposer({
         <button
           type="submit"
           disabled={saving}
-          className="h-10 flex-[2] rounded-xl bg-primary text-[13px] font-bold text-primary-foreground disabled:opacity-60"
+          className={cn(
+            "rounded-xl bg-primary font-bold text-primary-foreground disabled:opacity-60",
+            fill ? "h-12 flex-1 text-[15px]" : "h-10 flex-[2] text-[13px]",
+          )}
         >
           {submitLabel}
         </button>
