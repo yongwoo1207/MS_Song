@@ -51,7 +51,7 @@
 ```bash
 npm run dev          # 화면만 (vite, 8080)
 npm run dev:api      # 워커 + 로컬 D1 (8787). /api 를 쓰려면 둘 다 필요
-npm test             # vitest, 현재 64개 통과
+npm test             # vitest, 현재 68개 통과
 npm run typecheck    # tsc && tsc -p worker — worker 쪽을 빼먹지 말 것
 npm run format.fix   # prettier
 ```
@@ -75,11 +75,11 @@ client/
                       device, site …
 shared/               클라이언트·워커가 함께 쓰는 타입과 상수 (posts.ts 등)
 worker/index.ts       API 전부 + scheduled 핸들러. 1100줄 남짓 단일 파일
-migrations/           D1 마이그레이션 (0001~0012)
+migrations/           D1 마이그레이션 (0001~0013)
 public/data/          차트 JSON (워크플로가 갱신)
 ```
 
-**정책 상수는 `shared/` 와 `worker/index.ts` 상단에 모여 있다.** 글자 수 제한(`shared/posts.ts`), 신고 자동 숨김 기준(`HIDE_AFTER_REPORTS = 3`), 도배 제한(`LIMITS`), 파기 기간(`PURGE_AFTER_DAYS = 30`).
+**정책 상수는 `shared/` 와 `worker/index.ts` 상단에 모여 있다.** 글자 수 제한(`shared/posts.ts`), 신고 자동 숨김 기준(`HIDE_AFTER_REPORTS`, `shared/posts.ts`), 도배 제한(`LIMITS`), 파기 기간(`PURGE_AFTER_DAYS = 30`).
 
 **운영자가 채워야 하는 값은 `client/lib/site.ts` 한 곳에 있다.** 현재 `FEEDBACK_URL` 과 `CONTACT_EMAIL` 이 비어 있다(7절).
 
@@ -113,6 +113,7 @@ SQLite(D1). 모든 시각은 `'YYYY-MM-DDTHH:MM:SS.sssZ'` 문자열 UTC.
 주요 컬럼:
 
 - `body` 1~500자, `title` 1~60자 (화면 제한은 `shared/posts.ts` 가 더 엄격)
+- `rank` 는 **그 글·좋아요에 대해 글쓴이가 가졌던 계급**이다. 다른 사람 입대일 차트에서 누른 좋아요·한마디처럼 가진 계급이 없으면 NULL (0013에서 record 의 NOT NULL 제약을 풀었다)
 - `author_id`, `cohort_month`(군번 'YYYY-MM'), `branch`(육군/해군/공군/해병대/카투사/사회복무), `rank`(이병/일병/상병/병장), `is_reserve`, `days_to_enlist` — **글 쓸 당시의 복무 상태를 박아둔다.** 나중에 계급이 올라가도 글의 표시는 안 바뀐다
 - `like_count`, `reply_count`, `report_count` — 비정규화 카운터. 토글·삭제 시 같이 갱신해야 한다
 - `status`: `visible` | `hidden`(신고 3회 자동) | `deleted`
@@ -135,7 +136,7 @@ SQLite(D1). 모든 시각은 `'YYYY-MM-DDTHH:MM:SS.sssZ'` 문자열 UTC.
 
 ### 마이그레이션
 
-`migrations/0001~0012`. **로컬과 원격을 따로 적용한다.**
+`migrations/0001~0013`. **로컬과 원격을 따로 적용한다.**
 
 ```bash
 npm run db:migrate:remote     # 운영 (wrangler d1 migrations apply DB --remote)
@@ -183,7 +184,7 @@ npm run db:migrate:remote     # 운영 (wrangler d1 migrations apply DB --remote
 - 회원가입 없이 바로 쓴다. 이 강점은 유지한다
 - 전역일·진급일은 **참고용**이며, 공식 확인이 필요하다고 약관(제7조)과 화면에 명시
 - 차트는 2010년 2월 이후. 음원은 직접 제공하지 않고 YouTube(`youtube-nocookie.com`)로 재생
-- 커뮤니티는 신고 3회 자동 숨김 + 도배 제한으로 관리. 좋아요 `POPULAR_MIN_LIKES`(5)개를 넘으면 인기글로 올라가고 글에 "인기" 표시가 붙는다
+- 커뮤니티는 신고 `HIDE_AFTER_REPORTS`(5)회 자동 숨김 + 도배 제한으로 관리. 좋아요 `POPULAR_MIN_LIKES`(5)개를 넘으면 인기글로 올라가고 글에 "인기" 표시가 붙는다
 - 차트는 내 입대일뿐 아니라 **다른 입대일로도** 볼 수 있다(`/songs`, 주소의 `od`·`ob`). 보는 동안 내 입대일은 바뀌지 않는다
 
 **브랜드**

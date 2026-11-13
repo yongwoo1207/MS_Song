@@ -5,13 +5,21 @@ import { toast } from "sonner";
 import MobileShell from "@/components/ipdae/MobileShell";
 import BottomNav from "@/components/ipdae/BottomNav";
 import ConfirmDelete from "@/components/ipdae/ConfirmDelete";
+import MemoriesPanel from "@/components/ipdae/MemoriesPanel";
 import MemoryItem from "@/components/ipdae/MemoryItem";
 import PostComposer from "@/components/ipdae/PostComposer";
+import ReportDialog from "@/components/ipdae/ReportDialog";
 import SongPlayer from "@/components/ipdae/SongPlayer";
 import TalkItem from "@/components/ipdae/TalkItem";
 import SongLikeItem from "@/components/ipdae/SongLikeItem";
 import { useServicePlan } from "@/hooks/useServicePlan";
 import { useCommunityFeed } from "@/hooks/useCommunityFeed";
+import {
+  useSongCounts,
+  useSongLikes,
+  useToggleSongLike,
+} from "@/hooks/useMyPosts";
+import { useReport } from "@/hooks/useReport";
 import { type BoardTopic, TOPICS, topicOf } from "@/lib/boards";
 import { dLabel, ddayStatus } from "@/lib/dday";
 import {
@@ -19,6 +27,7 @@ import {
   type Memory,
   TITLE_MAX_LENGTH,
   authorLine,
+  monthParam,
   writerOf,
 } from "@/lib/memories";
 import type { ServicePlan } from "@/lib/service";
@@ -88,6 +97,18 @@ function Board({
   const navigate = useNavigate();
   const { search } = useLocation();
   const feed = useCommunityFeed(topic.key);
+  // Hearts on the songs themselves, so a 좋아요 card can be hearted back
+  const songCounts = useSongCounts();
+  const { likes: songLikes, liked: songLiked } = useSongLikes();
+  const toggleSongLike = useToggleSongLike();
+  // 한마디 under a song someone hearted, written from the board
+  const [commenting, setCommenting] = useState<{
+    song: SongRef;
+    aboutMonth: string;
+  } | null>(null);
+  // 신고, asked for a reason first
+  const report = useReport();
+  const [reporting, setReporting] = useState<Memory | null>(null);
   // The song memory being listened to
   const [song, setSong] = useState<SongRef | null>(null);
   const closeSong = useCallback(() => setSong(null), []);
@@ -203,7 +224,35 @@ function Board({
                 <SongLikeItem
                   key={m.id}
                   like={m}
+                  likes={m.song ? (songLikes[m.song.key] ?? 0) : 0}
+                  liked={!!m.song && songLiked.has(m.song.key)}
+                  memories={m.song ? (songCounts?.[m.song.key] ?? 0) : 0}
                   onPlay={m.song ? () => setSong(m.song) : undefined}
+                  onLike={
+                    m.song
+                      ? () =>
+                          toggleSongLike.mutate(
+                            {
+                              key: m.song!.key,
+                              title: m.song!.title,
+                              artist: m.song!.artist,
+                              rank: rankNow(status),
+                              author,
+                            },
+                            { onError },
+                          )
+                      : undefined
+                  }
+                  onComment={
+                    m.song
+                      ? () =>
+                          setCommenting({
+                            song: m.song!,
+                            aboutMonth:
+                              m.aboutMonth ?? monthParam(new Date(m.createdAt)),
+                          })
+                      : undefined
+                  }
                 />
               ) : m.kind === "record" ? (
                 <MemoryItem
@@ -213,6 +262,7 @@ function Board({
                   onPlay={m.song ? () => setSong(m.song) : undefined}
                   onLike={() => feed.like.mutate(m.id, { onError })}
                   onDelete={() => setDeleting(m)}
+                  onReport={() => setReporting(m)}
                 />
               ) : (
                 // 글 open into their page with 댓글
@@ -240,6 +290,35 @@ function Board({
       {!writing && (
         <WriteButton onClick={openComposer} controls="community-composer" />
       )}
+
+      {commenting && (
+        <MemoriesPanel
+          song={commenting.song}
+          rank={rankNow(status)}
+          aboutMonth={commenting.aboutMonth}
+          author={author}
+          onClose={() => setCommenting(null)}
+        />
+      )}
+
+      <ReportDialog
+        what={reporting?.kind === "record" ? "한마디" : "글"}
+        open={!!reporting}
+        saving={report.isPending}
+        onCancel={() => setReporting(null)}
+        onConfirm={(reason) => {
+          const m = reporting;
+          setReporting(null);
+          if (!m) return;
+          report.mutate(
+            { id: m.id, reason },
+            {
+              onSuccess: () => toast("신고를 접수했어요. 확인 후 조치할게요."),
+              onError,
+            },
+          );
+        }}
+      />
 
       <ConfirmDelete
         what={deleting?.kind === "record" ? "댓글" : "글"}

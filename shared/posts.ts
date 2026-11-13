@@ -18,6 +18,13 @@ export const POST_BRANCHES = [
 ] as const;
 export const REPORT_REASONS = ["보안", "욕설·비방", "광고", "기타"] as const;
 
+/**
+ * 신고: a post is hidden from everyone once this many different people
+ * report it (worker/index.ts). The 이용약관 (제5조) states the same number,
+ * so change both together — client/pages/Terms.tsx reads this constant.
+ */
+export const HIDE_AFTER_REPORTS = 5;
+
 export const RECORD_MAX_LENGTH = 300;
 export const TALK_MAX_LENGTH = 500;
 export const REPLY_MAX_LENGTH = 300;
@@ -72,7 +79,12 @@ export interface NewSongRecord extends AuthorFields {
   kind: "record";
   song: SongRef;
   body: string;
-  rank: PostRank; // rank whose chart the author found the song in
+  /**
+   * The rank the writer held when the song was theirs: the chart's rank on
+   * their own 입대곡, their rank now on someone else's chart, null when they
+   * hold none (예비역·입대 예정자).
+   */
+  rank: PostRank | null;
   aboutMonth: string; // 'YYYY-MM' chart month the memory files under
 }
 

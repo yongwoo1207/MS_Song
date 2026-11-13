@@ -6,8 +6,10 @@ import ConfirmDelete from "@/components/ipdae/ConfirmDelete";
 import MobileShell from "@/components/ipdae/MobileShell";
 import PopularBadge from "@/components/ipdae/PopularBadge";
 import PostComposer from "@/components/ipdae/PostComposer";
+import ReportDialog from "@/components/ipdae/ReportDialog";
 import SubHeader from "@/components/ipdae/SubHeader";
 import { useServicePlan } from "@/hooks/useServicePlan";
+import { useReport } from "@/hooks/useReport";
 import { useThread } from "@/hooks/useTalks";
 import {
   type Memory,
@@ -61,6 +63,10 @@ export default function Talk() {
         onError,
       },
     );
+
+  // 신고: which post or 댓글, asked for a reason first
+  const report = useReport();
+  const [reporting, setReporting] = useState<Memory | null>(null);
 
   // Asked in a dialog first (see ConfirmDelete)
   const [deleting, setDeleting] = useState<Memory | null>(null);
@@ -152,6 +158,7 @@ export default function Talk() {
                     onLike={() => like.mutate(post.id, { onError })}
                     onEdit={() => setEditingId(post.id)}
                     onDelete={() => onDelete(post)}
+                    onReport={() => setReporting(post)}
                   />
                 </>
               )}
@@ -181,6 +188,7 @@ export default function Talk() {
                         onSave={(body) => saveEdit(g.top!, body)}
                         onLike={() => like.mutate(g.top!.id, { onError })}
                         onDelete={() => onDelete(g.top!)}
+                        onReport={() => setReporting(g.top!)}
                         onAnswer={
                           author
                             ? () => setAnswering({ group: g.id, to: g.top! })
@@ -211,6 +219,7 @@ export default function Talk() {
                               onSave={(body) => saveEdit(a, body)}
                               onLike={() => like.mutate(a.id, { onError })}
                               onDelete={() => onDelete(a)}
+                              onReport={() => setReporting(a)}
                               onAnswer={
                                 author
                                   ? () => setAnswering({ group: g.id, to: a })
@@ -301,6 +310,25 @@ export default function Talk() {
           </>
         )}
       </main>
+      <ReportDialog
+        what={reporting?.kind === "reply" ? "댓글" : "글"}
+        open={!!reporting}
+        saving={report.isPending}
+        onCancel={() => setReporting(null)}
+        onConfirm={(reason) => {
+          const m = reporting;
+          setReporting(null);
+          if (!m) return;
+          report.mutate(
+            { id: m.id, reason },
+            {
+              onSuccess: () => toast("신고를 접수했어요. 확인 후 조치할게요."),
+              onError,
+            },
+          );
+        }}
+      />
+
       <ConfirmDelete
         what={
           deleting?.kind !== "reply" ? "글" : deleting.replyTo ? "답글" : "댓글"
@@ -334,6 +362,7 @@ function Comment({
   onSave,
   onLike,
   onDelete,
+  onReport,
   onAnswer,
 }: {
   memory: Memory;
@@ -345,6 +374,7 @@ function Comment({
   onSave: (body: string) => void;
   onLike: () => void;
   onDelete: () => void;
+  onReport: () => void;
   onAnswer?: () => void;
 }) {
   return (
@@ -390,6 +420,7 @@ function Comment({
             onLike={onLike}
             onEdit={onEdit}
             onDelete={onDelete}
+            onReport={onReport}
             onAnswer={onAnswer}
           />
         </>
@@ -403,12 +434,15 @@ function Actions({
   onLike,
   onEdit,
   onDelete,
+  onReport,
   onAnswer,
 }: {
   post: Memory;
   onLike: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  /** Open the 신고 dialog (someone else's post) */
+  onReport: () => void;
   /** Open the 답글 box (댓글 only) */
   onAnswer?: () => void;
 }) {
@@ -441,6 +475,15 @@ function Actions({
         </button>
       )}
       <span className="flex-1" />
+      {!m.mine && (
+        <button
+          type="button"
+          onClick={onReport}
+          className="h-8 rounded-lg px-1.5 text-xs text-muted-foreground hover:text-destructive"
+        >
+          신고
+        </button>
+      )}
       {m.mine && (
         <button
           type="button"

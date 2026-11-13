@@ -62,6 +62,10 @@ export default function Songs() {
 
   if (!plan) return <Navigate to="/" replace />;
 
+  // Someone else's chart: a heart of mine is from my own rank now, not from
+  // the rank whose chart I happen to be looking at
+  const myRank = rankOn(plan, new Date());
+
   const valid = inEnlistRange(day);
   const show = (d: string, b: Branch = branch) => {
     setDay(d);
@@ -79,7 +83,7 @@ export default function Songs() {
   return (
     <MobileShell>
       <SubHeader title="다른 입대일 노래" />
-      <NowPlaying player={player} author={writerOf(plan)} />
+      <NowPlaying player={player} author={writerOf(plan)} asRank={myRank} />
 
       <form
         onSubmit={submit}
@@ -175,6 +179,7 @@ export default function Songs() {
                     period={period}
                     player={player}
                     author={writerOf(plan)}
+                    asRank={myRank}
                     current={period.rank === rankToday}
                   />
                 </TabsContent>

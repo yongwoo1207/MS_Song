@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { toast } from "sonner";
 import { useDragToClose } from "@/hooks/useDragToClose";
 import { useMemories } from "@/hooks/useMemories";
+import { useReport } from "@/hooks/useReport";
 import type { PostRank, SongRef } from "@shared/posts";
 import {
   MEMORY_MAX_LENGTH,
@@ -12,11 +13,12 @@ import {
   preEnlistLabel,
 } from "@/lib/memories";
 import MemoryItem from "./MemoryItem";
+import ReportDialog from "./ReportDialog";
 
 interface MemoriesPanelProps {
   song: SongRef;
-  /** The rank tab the song was played from: "일병 시절" */
-  rank: PostRank;
+  /** The rank the writer holds over this song; null when they hold none */
+  rank: PostRank | null;
   /** 'YYYY-MM' chart month the memory is about */
   aboutMonth: string;
   author: MemoryAuthor;
@@ -48,6 +50,9 @@ export default function MemoriesPanel({
   } = useMemories(song.key);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
+  // 신고 someone else's 한마디, asked for a reason first
+  const report = useReport();
+  const [reporting, setReporting] = useState<string | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const handleRef = useRef<HTMLElement>(null);
@@ -69,6 +74,7 @@ export default function MemoriesPanel({
       {
         onSuccess: () => {
           setText("");
+          setError("");
         },
         onError: (err) =>
           setError(err instanceof Error ? err.message : "저장하지 못했어요"),
@@ -151,6 +157,7 @@ export default function MemoriesPanel({
                     onError: (err) => toast(err.message),
                   })
                 }
+                onReport={() => setReporting(m.id)}
               />
             ))}
             {hasMore && (
@@ -211,7 +218,7 @@ export default function MemoriesPanel({
             <span className="text-ink-icon">
               {author.daysToEnlist != null
                 ? `${preEnlistLabel(author.daysToEnlist)}으로 표시돼요`
-                : `${cohortLabel(author.cohortMonth)} · ${rank} 시절${author.isReserve ? " · 예비역으로" : "로"} 표시돼요`}
+                : `${cohortLabel(author.cohortMonth)}${rank ? ` · ${rank} 시절` : ""}${author.isReserve ? " · 예비역으로" : "로"} 표시돼요`}
             </span>
           )}
           <span className="shrink-0 font-mono text-ink-icon">
@@ -219,6 +226,24 @@ export default function MemoriesPanel({
           </span>
         </div>
       </form>
+      <ReportDialog
+        what="한마디"
+        open={!!reporting}
+        saving={report.isPending}
+        onCancel={() => setReporting(null)}
+        onConfirm={(reason) => {
+          const id = reporting;
+          setReporting(null);
+          if (!id) return;
+          report.mutate(
+            { id, reason },
+            {
+              onSuccess: () => toast("신고를 접수했어요. 확인 후 조치할게요."),
+              onError: (err) => toast(err.message),
+            },
+          );
+        }}
+      />
     </section>,
     document.body,
   );

@@ -43,6 +43,7 @@ import {
   COMMUNITY_MAX_LENGTH,
   FEED_TOPICS,
   FEED_WHO,
+  HIDE_AFTER_REPORTS,
   POPULAR_DAYS,
   POPULAR_LIMIT,
   POPULAR_MIN_LIKES,
@@ -56,7 +57,6 @@ interface Env {
   ASSETS: Fetcher;
 }
 
-const HIDE_AFTER_REPORTS = 3;
 const LIMITS = [
   { seconds: 60, max: 3, message: "조금 뒤에 다시 남겨주세요" },
   { seconds: 86_400, max: 30, message: "오늘은 더 남길 수 없어요" },
@@ -72,7 +72,8 @@ const RecordBase = z.object({
     .string()
     .transform((s) => s.trim())
     .pipe(z.string().min(1, "내용을 입력해주세요").max(RECORD_MAX_LENGTH)),
-  rank: z.enum(POST_RANKS),
+  // null: left by someone who holds no rank now (예비역·입대 예정자)
+  rank: z.enum(POST_RANKS).nullable().default(null),
   cohortMonth: z.string().regex(MONTH),
   branch: z.enum(POST_BRANCHES),
   isReserve: z.boolean(),
@@ -130,7 +131,7 @@ const SongLike = z.object({
   key: z.string().min(3).max(300),
   title: z.string().min(1).max(200).optional(),
   artist: z.string().min(1).max(200).optional(),
-  rank: z.enum(POST_RANKS).optional(),
+  rank: z.enum(POST_RANKS).nullable().optional(),
   cohortMonth: z.string().regex(MONTH).optional(),
   branch: z.enum(POST_BRANCHES).optional(),
   isReserve: z.boolean().optional(),

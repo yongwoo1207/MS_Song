@@ -4,6 +4,7 @@ import {
   cohortLabel,
   isPopular,
   preEnlistLabel,
+  songWhoParts,
   timeAgo,
 } from "@/lib/memories";
 import { cn } from "@/lib/utils";
@@ -20,12 +21,15 @@ export default function MemoryItem({
   onPlay,
   onLike,
   onDelete,
+  onReport,
 }: {
   memory: Memory;
   showSong?: boolean;
   onPlay?: () => void;
   onLike: () => void;
   onDelete: () => void;
+  /** 신고 someone else's 한마디; left out where it isn't offered */
+  onReport?: () => void;
 }) {
   return (
     <li className="flex flex-col gap-1.5 rounded-2xl border bg-card px-3.5 pb-2 pt-3">
@@ -42,34 +46,40 @@ export default function MemoryItem({
           >
             <Play className="size-3 fill-current" strokeWidth={2.2} />
           </span>
-          <span className="truncate font-bold">{m.song.title}</span>
-          <span className="shrink-0 text-muted-foreground">·</span>
-          <span className="truncate text-muted-foreground">
-            {m.song.artist}
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="line-clamp-2 break-words font-bold leading-snug">
+              {m.song.title}
+            </span>
+            <span className="line-clamp-1 break-words text-[12px] text-muted-foreground">
+              {m.song.artist}
+            </span>
           </span>
         </button>
       )}
       {showSong && m.song && !onPlay && (
-        <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
+        <div className="flex min-w-0 items-start gap-1.5 text-[13px]">
           <Music
-            className="size-3.5 shrink-0 text-primary"
+            className="mt-0.5 size-3.5 shrink-0 text-primary"
             strokeWidth={2.2}
             aria-hidden="true"
           />
-          <span className="truncate font-bold">{m.song.title}</span>
-          <span className="shrink-0 text-muted-foreground">·</span>
-          <span className="truncate text-muted-foreground">
-            {m.song.artist}
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="line-clamp-2 break-words font-bold leading-snug">
+              {m.song.title}
+            </span>
+            <span className="line-clamp-1 break-words text-[12px] text-muted-foreground">
+              {m.song.artist}
+            </span>
           </span>
         </div>
       )}
-      <div className="flex items-center gap-1.5">
-        <span className="whitespace-nowrap rounded-md bg-accent px-1.5 py-[3px] text-[11px] font-bold text-primary">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+        <span className="rounded-md bg-accent px-1.5 py-[3px] text-[11px] font-bold leading-relaxed text-primary">
           {m.daysToEnlist != null
             ? preEnlistLabel(m.daysToEnlist)
             : m.title
               ? `${cohortLabel(m.cohortMonth)} · ${m.isReserve ? "예비역" : (m.rank ?? "현역")}`
-              : `${cohortLabel(m.cohortMonth)} · ${m.rank} 시절${m.isReserve ? " · 예비역" : ""}`}
+              : songWhoParts(m).join(" · ")}
         </span>
         {m.mine && (
           <span className="text-[11px] font-bold text-ink-icon">내 글</span>
@@ -107,6 +117,15 @@ export default function MemoryItem({
           {m.likes}
         </button>
         <span className="flex-1" />
+        {!m.mine && onReport && (
+          <button
+            type="button"
+            onClick={onReport}
+            className="h-8 rounded-lg px-1.5 text-xs text-muted-foreground hover:text-destructive"
+          >
+            신고
+          </button>
+        )}
         {m.mine && (
           <button
             type="button"

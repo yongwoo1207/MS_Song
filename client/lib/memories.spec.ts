@@ -7,6 +7,7 @@ import {
   cohortMonthOf,
   isPopular,
   monthParam,
+  songWhoParts,
   timeAgo,
   writerOf,
 } from "./memories";
@@ -74,6 +75,16 @@ describe("apiMemoryStore", () => {
       isReserve: true,
       daysToEnlist: null,
     });
+  });
+
+  it("reports someone else's post with the chosen reason", async () => {
+    const fetch = vi.fn(() => reply(204));
+    vi.stubGlobal("fetch", fetch);
+    await apiMemoryStore.report("abc", "욕설·비방");
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/api/posts/abc/report");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ reason: "욕설·비방" });
   });
 
   it("surfaces the server's error message", async () => {
@@ -146,6 +157,45 @@ describe("groupReplies", () => {
       ["b", "b", ["b1"]],
       ["x", null, ["x1"]],
     ]);
+  });
+});
+
+describe("songWhoParts", () => {
+  const who = (over: Partial<Memory>) =>
+    songWhoParts({
+      cohortMonth: "2015-03",
+      branch: "육군",
+      isReserve: false,
+      rank: null,
+      daysToEnlist: null,
+      ...over,
+    } as Memory);
+
+  it("keeps 그 시절 계급 and 예비역 apart, so neither is cut off", () => {
+    expect(who({ rank: "이병", isReserve: true })).toEqual([
+      "2015년 3월 군번",
+      "육군",
+      "이병 시절",
+      "예비역",
+    ]);
+  });
+
+  it("leaves the rank out when the writer holds none", () => {
+    expect(who({ isReserve: true })).toEqual([
+      "2015년 3월 군번",
+      "육군",
+      "예비역",
+    ]);
+    expect(who({ rank: "상병" })).toEqual([
+      "2015년 3월 군번",
+      "육군",
+      "상병 시절",
+      "현역",
+    ]);
+  });
+
+  it("says how far off 입대 is for a 입대 예정자", () => {
+    expect(who({ daysToEnlist: 23 })).toEqual(["입대 23일 전", "육군"]);
   });
 });
 

@@ -3,6 +3,7 @@ import { ChevronRight, Heart, MessageCircle, X } from "lucide-react";
 import { toast } from "sonner";
 import { songKey } from "@shared/api";
 import type { Player } from "@/hooks/usePlayer";
+import type { PostRank } from "@shared/posts";
 import { type MemoryAuthor, monthParam } from "@/lib/memories";
 import {
   useSongCounts,
@@ -22,11 +23,20 @@ import { NextIcon, PauseIcon, PlayIcon, PrevIcon } from "./icons";
 export default function NowPlaying({
   player,
   author,
+  asRank,
 }: {
   player: Player;
   author: MemoryAuthor;
+  /**
+   * The rank a heart or 한마디 from here is recorded with. Left out on my
+   * own 입대곡, where the chart's rank is my rank of that time; on someone
+   * else's chart it is my rank now (null when I hold none).
+   */
+  asRank?: PostRank | null;
 }) {
   const { current: song, queue } = player;
+  // undefined: this chart is mine, so its rank is the one to record
+  const rank = asRank === undefined ? (queue?.rank ?? null) : asRank;
   const key = song ? songKey(song) : undefined;
   // Total under the song (the panel itself loads 20 at a time)
   const counts = useSongCounts();
@@ -121,7 +131,7 @@ export default function NowPlaying({
                 key: key!,
                 title: song!.title,
                 artist: song!.artist,
-                rank: queue!.rank,
+                rank,
                 author,
               },
               { onError: (err) => toast(err.message) },
@@ -166,7 +176,7 @@ export default function NowPlaying({
       {memoriesOpen && (
         <MemoriesPanel
           song={{ key, title: song.title, artist: song.artist }}
-          rank={queue.rank}
+          rank={rank}
           aboutMonth={monthParam(song.bestMonth)}
           author={author}
           onClose={() => setMemoriesOpen(false)}

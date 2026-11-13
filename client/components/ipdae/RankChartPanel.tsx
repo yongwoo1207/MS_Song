@@ -8,6 +8,7 @@ import {
 } from "@/hooks/useMyPosts";
 import type { Player } from "@/hooks/usePlayer";
 import { shortDot, youtubeQueue } from "@/lib/format";
+import type { PostRank } from "@shared/posts";
 import type { RankPeriod } from "@/lib/service";
 import type { MemoryAuthor } from "@/lib/memories";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,6 +23,12 @@ interface RankChartPanelProps {
   author: MemoryAuthor;
   /** The rank the user holds now: its chart is still growing */
   current?: boolean;
+  /**
+   * The rank a heart from here is recorded with. Left out on my own 입대곡,
+   * where this chart's rank is my rank of that time; on someone else's
+   * chart it is my rank now (null when I hold none).
+   */
+  asRank?: PostRank | null;
 }
 
 /** Period line, play-all actions and the merged chart for one rank. */
@@ -30,7 +37,10 @@ export default function RankChartPanel({
   player,
   author,
   current,
+  asRank,
 }: RankChartPanelProps) {
+  // undefined: this chart is mine, so its rank is the one to record
+  const likeRank = asRank === undefined ? period.rank : asRank;
   const { data, isLoading, isError } = useRankChart(period);
   const songs = data?.songs ?? [];
   const playable = songs.filter((s) => s.youtubeId);
@@ -107,7 +117,7 @@ export default function RankChartPanel({
                       key: songKey(song),
                       title: song.title,
                       artist: song.artist,
-                      rank: period.rank,
+                      rank: likeRank,
                       author,
                     },
                     {

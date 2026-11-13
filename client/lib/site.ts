@@ -16,4 +16,4 @@ export const FEEDBACK_URL = "";
 export const CONTACT_EMAIL = "";
 
 /** Shown at the top of 이용약관 and 개인정보처리방침. */
-export const LEGAL_UPDATED = "2026년 11월 12일";
+export const LEGAL_UPDATED = "2026년 11월 13일";

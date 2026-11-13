@@ -1,4 +1,5 @@
 import LegalPage, { Clause, Points } from "@/components/ipdae/LegalPage";
+import { HIDE_AFTER_REPORTS } from "@shared/posts";
 import { LEGAL_UPDATED, SERVICE_NAME } from "@/lib/site";
 
 /** 이용약관. Plain Korean; the numbers match what the server enforces. */
@@ -59,9 +60,15 @@ export default function Terms() {
       </Clause>
 
       <Clause title="제5조 (게시물의 관리)">
+        <p>
+          다른 이용자의 글·댓글이 제4조를 위반한다고 생각되면 글 아래의 "신고"
+          버튼으로 사유(보안 / 욕설·비방 / 광고 / 기타)를 골라 알려주세요. 한
+          사람이 같은 글을 신고할 수 있는 횟수는 1회입니다.
+        </p>
         <Points
           items={[
-            "같은 글에 신고가 3회 쌓이면 자동으로 숨겨집니다.",
+            `서로 다른 이용자의 신고가 같은 글에 ${HIDE_AFTER_REPORTS}회 쌓이면 자동으로 숨겨집니다.`,
+            "숨겨진 글은 다른 이용자에게 보이지 않으며, 글쓴이에게는 '내 활동'에서 숨겨졌다고 표시됩니다.",
             "운영자는 제4조를 위반한 글을 미리 알리지 않고 숨기거나 삭제할 수 있습니다.",
             "위반이 반복되면 해당 기기에서 글을 쓰지 못하도록 제한할 수 있습니다.",
             "짧은 시간에 너무 많은 글을 올리면 일시적으로 작성이 제한됩니다.",

@@ -13,6 +13,7 @@ import {
   type PostBranch,
   type PostRank,
   POPULAR_MIN_LIKES,
+  type ReportReason,
   RECORD_MAX_LENGTH,
   type SongRef,
 } from "@shared/posts";
@@ -34,7 +35,8 @@ export interface MemoryAuthor {
 export interface NewMemory {
   song: SongRef;
   body: string;
-  rank: PostRank;
+  /** null when the writer holds no rank now (예비역·입대 예정자) */
+  rank: PostRank | null;
   aboutMonth: string; // 'YYYY-MM'
   author: MemoryAuthor;
 }
@@ -75,6 +77,8 @@ export interface MemoryStore {
   /** Edit my own post or 댓글 */
   edit(id: string, input: EditPost): Promise<Memory>;
   toggleLike(id: string): Promise<{ liked: boolean; likes: number }>;
+  /** 신고 someone else's post; HIDE_AFTER_REPORTS of them hide it. */
+  report(id: string, reason: ReportReason): Promise<void>;
   /** Everything written from this device, hidden ones too. */
   listMine(): Promise<Memory[]>;
   /** memories and hearts per song key */
@@ -90,7 +94,8 @@ export interface SongLikeInput {
   key: string;
   title: string;
   artist: string;
-  rank: PostRank;
+  /** null when the liker holds no rank now (예비역·입대 예정자) */
+  rank: PostRank | null;
   author: MemoryAuthor;
 }
 
@@ -177,6 +182,12 @@ export const apiMemoryStore: MemoryStore = {
   toggleLike(id) {
     return call(`/${encodeURIComponent(id)}/like`, { method: "POST" });
   },
+  async report(id, reason) {
+    await call(`/${encodeURIComponent(id)}/report`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
+  },
   async listMine() {
     const data = await apiCall<{ posts: Memory[] }>("/api/me/posts");
     return data.posts;
@@ -244,6 +255,27 @@ export function authorLine(
     return `${preEnlistLabel(m.daysToEnlist)} · ${m.branch}`;
   const role = m.isReserve ? "예비역" : (m.rank ?? "현역");
   return `${cohortLabel(m.cohortMonth)} · ${m.branch} · ${role}`;
+}
+
+/**
+ * Who left a 노래 좋아요 or 한마디, piece by piece so the card can wrap it
+ * instead of cutting it off: "2015년 3월 군번", "육군", "이병 시절",
+ * "예비역". `rank` is the rank they held over that song, and is left out
+ * when they held none.
+ */
+export function songWhoParts(
+  m: Pick<Memory, "cohortMonth" | "branch" | "isReserve"> & {
+    daysToEnlist?: number | null;
+    rank?: PostRank | null;
+  },
+): string[] {
+  if (m.daysToEnlist != null) return [preEnlistLabel(m.daysToEnlist), m.branch];
+  return [
+    cohortLabel(m.cohortMonth),
+    m.branch,
+    ...(m.rank ? [`${m.rank} 시절`] : []),
+    m.isReserve ? "예비역" : "현역",
+  ];
 }
 
 /** '2021-03' → "2021년 3월" */
