@@ -144,37 +144,14 @@ export default function Dday() {
             setPreviewUrl(previewUrl);
           }}
         >
+          {/* The card and the songs only — the 기념일 list made the image
+              too tall to read at a glance */}
           {status.status === "serving" ? (
-            <>
-              <DdayCard plan={plan} status={status} />
-              <MilestoneList
-                title="다가오는 날"
-                items={status.upcoming}
-                strong="전역"
-              />
-            </>
+            <DdayCard plan={plan} status={status} />
           ) : status.status === "done" ? (
-            <>
-              <DoneCard plan={plan} status={status} />
-              <MilestoneList
-                title="다가오는 기념일"
-                items={status.anniversaries}
-                action={
-                  <span className="text-xs font-bold text-primary">
-                    지금 {reserveLabel(status.reserve)}
-                  </span>
-                }
-              />
-            </>
+            <DoneCard plan={plan} status={status} />
           ) : (
-            <>
-              <NotYetCard plan={plan} status={status} />
-              <MilestoneList
-                title="입대 후 일정"
-                items={status.upcoming}
-                strong="전역"
-              />
-            </>
+            <NotYetCard plan={plan} status={status} />
           )}
           {status.status !== "notYet" && <RankTopSongs plan={plan} />}
         </CardSnapshot>
